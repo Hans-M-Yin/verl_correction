@@ -409,10 +409,17 @@ class vLLMHttpServer:
             await self.run_headless(server_args)
 
     async def run_server(self, args: argparse.Namespace):
+        logger.warning('###################',args, '###################')
+        args.max_model_len = 8000
+        args.served_model_name = "qwen3-vl-8b"
         engine_args = AsyncEngineArgs.from_cli_args(args)
+
         usage_context = UsageContext.OPENAI_API_SERVER
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
         vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
+        # logger.warning('######################################################',vllm_config)
+        # vllm_config.max_model_len = 10000
+        # logger.warning('######################################################',vllm_config)
 
         fn_args = set(dict(inspect.signature(AsyncLLM.from_vllm_config).parameters).keys())
         kwargs = {}
@@ -420,7 +427,7 @@ class vLLMHttpServer:
             kwargs["enable_log_requests"] = engine_args.enable_log_requests
         if "disable_log_stats" in fn_args:
             kwargs["disable_log_stats"] = engine_args.disable_log_stats
-
+        # logger.warning('#################################',kwargs)
         engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
 
         # Don't keep the dummy data in memory
