@@ -65,7 +65,8 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.config import FSDPEngineConfig
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
-
+import logging
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ResourcePoolManager:
@@ -120,7 +121,7 @@ class ResourcePoolManager:
         )
         if total_available_gpus < total_required_gpus:
             raise ValueError(
-                f"Total available GPUs {total_available_gpus} is less than total desired GPUs {total_required_gpus}"
+                f"Total available GPUs {total_available_gpus} is less than total desired GPUs {total_required_gpus, }"
             )
 
 
@@ -672,12 +673,14 @@ class RayPPOTrainer:
             if not self.async_rollout_mode:
                 test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
             else:
+                logger.warning("#################### 你好！！ ########################")
+
                 test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
 
-            print("validation generation end")
+            logger.warning(f"#################### validation generation end: {test_output_gen_batch_padded} ########################")
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
@@ -884,7 +887,7 @@ class RayPPOTrainer:
             # else for parallelize mode, we launch a reward worker for each rollout worker (in agent loop, not here)
             if not can_reward_loop_parallelize:
                 from verl.experimental.reward_loop import RewardLoopManager
-
+                # logger.warning(f'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@真的服了@@@@@@@@@@@@@@@@@@@@@@@@')
                 self.config.reward_model.n_gpus_per_node = self.config.trainer.n_gpus_per_node
                 resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
                 self.reward_loop_manager = RewardLoopManager(

@@ -409,18 +409,12 @@ class vLLMHttpServer:
             await self.run_headless(server_args)
 
     async def run_server(self, args: argparse.Namespace):
-        logger.warning('###################',args, '###################')
         args.max_model_len = 8000
         args.served_model_name = "qwen3-vl-8b"
         engine_args = AsyncEngineArgs.from_cli_args(args)
-
         usage_context = UsageContext.OPENAI_API_SERVER
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
         vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
-        # logger.warning('######################################################',vllm_config)
-        # vllm_config.max_model_len = 10000
-        # logger.warning('######################################################',vllm_config)
-
         fn_args = set(dict(inspect.signature(AsyncLLM.from_vllm_config).parameters).keys())
         kwargs = {}
         if "enable_log_requests" in fn_args:
@@ -443,6 +437,7 @@ class vLLMHttpServer:
 
         self.engine = engine_client
         self._server_port, self._server_task = await run_unvicorn(app, args, self._server_address)
+        logger.warning(f"&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& PORT:{self._server_port}")
 
     async def run_headless(self, args: argparse.Namespace):
         # Create the EngineConfig.
@@ -564,8 +559,10 @@ class vLLMHttpServer:
             await asyncio.gather(*[worker.wake_up.remote() for worker in self.workers])
         elif self.rollout_mode == RolloutMode.COLOCATED:
             # Directly call engine to wake up without sync weights.
+            logger.warning("操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈")
             if self.node_rank == 0:
                 await self.engine.wake_up(tags=["kv_cache", "weights"])
+                logger.warning("!@#$%^&*()启动完毕应该才对!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()")
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip wake_up in standalone mode")
 

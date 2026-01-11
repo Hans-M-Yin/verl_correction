@@ -3,8 +3,8 @@ ENGINE=${1:-vllm}
 
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2,3 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=/share3/yzh/perception/data/preprocessed_dataset/dataset1_virl_38k_20251219_133526/train.parquet \
-    data.val_files=/share3/yzh/perception/data/preprocessed_dataset/dataset1_virl_38k_20251219_133526/test.parquet \
+    data.train_files=/share3/yzh/perception/data/preprocessed_dataset/dataset1_virl_38k_20250109_3000/train.parquet \
+    data.val_files=/share3/yzh/perception/data/preprocessed_dataset/dataset1_virl_38k_20250109_3000/test.parquet \
     data.train_batch_size=64 \
     data.max_prompt_length=8192 \
     data.max_response_length=12000 \

@@ -51,7 +51,6 @@ from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.rollout.replica import TokenOutput, get_rollout_replica_class
 
 logger = logging.getLogger(__file__)
-logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 class AsyncLLMServerManager:
@@ -430,6 +429,7 @@ class AgentLoopWorker:
             repetition_penalty=1.0,
             logprobs=config.calculate_log_probs,
         )
+        # logger.warning("@@@@@@@@@@@@ 2.傻逼东西")
 
         # override sampling params for validation
         if batch.meta_info.get("validate", False):
@@ -475,6 +475,8 @@ class AgentLoopWorker:
                     self._run_agent_loop(sampling_params, trajectory_info[i], trace=trace_this_sample, **kwargs)
                 )
             )
+        # logger.warning("@@@@@@@@@@@@ 3.草你妈妈")
+
         outputs = await asyncio.gather(*tasks)
 
         output = self._postprocess(outputs)
@@ -490,6 +492,8 @@ class AgentLoopWorker:
         trace: bool = True,
         **kwargs,
     ) -> _InternalAgentLoopOutput:
+        # logger.warning("@@@@@@@@@@@@ 4.你奶啊你的")
+
         with rollout_trace_attr(
             step=trajectory["step"],
             sample_index=trajectory["sample_index"],
@@ -538,6 +542,7 @@ class AgentLoopWorker:
         #   e.g., [1,1,1,1,1,1,1,(tool start),0,0(tool end),1,1,0,0,0,0]
         # - position_ids: sequential positions for tokens, starting at 0
         #   e.g., [0,0,0,0,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,0,0,0,0]
+        # logger.warning("@@@@@@@@@@@@ 5.我嫩爹")
 
         # TODO(wuxibin): remove padding and use tensordict.
         self.tokenizer.padding_side = "left"
@@ -604,6 +609,8 @@ class AgentLoopWorker:
 
         multi_modal_inputs = self._compute_multi_modal_inputs(output, input_ids)
         position_ids = self._compute_position_ids(input_ids, attention_mask, multi_modal_inputs)
+        # logger.warning("@@@@@@@@@@@@ 6.爹嫩我")
+
         await self._compute_score(
             output,
             prompts=prompt_output["input_ids"],
@@ -613,6 +620,8 @@ class AgentLoopWorker:
             position_ids=position_ids,
             kwargs=kwargs,
         )
+        # logger.warning("@@@@@@@@@@@@ 7.老子还不信了")
+
 
         return _InternalAgentLoopOutput(
             prompt_ids=prompt_output["input_ids"],
@@ -695,6 +704,7 @@ class AgentLoopWorker:
         enable_async_reward = (
             self.reward_router_address is not None and self.config.reward_model.enable_resource_pool
         ) or not self.config.reward_model.enable
+        # logger.warning(f"@@@@@@@@@@2 {output.reward_score} {enable_async_reward} {self.use_reward_loop} @@@@@@@@@@@@@@@@")
 
         if output.reward_score is None and enable_async_reward and self.use_reward_loop:
             batch = TensorDict(
@@ -717,6 +727,7 @@ class AgentLoopWorker:
                 batch=batch,
                 non_tensor_batch=non_tensor_batch,
             )
+            # logger.warning("@@@@@@@@@@2 这里应该走过了才对啊 @@@@@@@@@@@@@@@@")
             result = await self.reward_loop_worker.compute_score.remote(data)
             output.reward_score = result["reward_score"]
             output.extra_fields["reward_extra_info"] = result["reward_extra_info"]
@@ -848,7 +859,7 @@ class AgentLoopManager:
 
             self.reward_model_manager = RewardModelManager(config.reward_model, rm_resource_pool)
             self.reward_router_address = self.reward_model_manager.get_router_address()
-
+        # # logger.warning("2. ############## %s", type(self.reward_model_manager))
         # for recipe to change
         if not hasattr(self, "rollout_replica_class"):
             self.rollout_replica_class = get_rollout_replica_class(self.config.actor_rollout_ref.rollout.name)
@@ -933,7 +944,7 @@ class AgentLoopManager:
         self.wake_up()
         if self.reward_model_manager:
             self.reward_model_manager.wake_up()
-
+        # logger.warning("@@@@@@@@@@@@ 1.猎杀开启")
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [

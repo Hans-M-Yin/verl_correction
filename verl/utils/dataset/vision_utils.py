@@ -18,13 +18,13 @@ from typing import Optional
 import torch
 from PIL import Image
 from qwen_vl_utils import fetch_image, fetch_video
-
+import logging
+logger = logging.getLogger(__name__)
 
 def process_image(image: dict | Image.Image, image_patch_size: int = 14) -> Image.Image:
     # My dataset has bug!
     if isinstance(image, Image.Image):
         return image.convert("RGB")
-
     if "bytes" in image.keys():
         assert "image" not in image, "Cannot have both `bytes` and `image`"
         image["image"] = Image.open(BytesIO(image["bytes"]))

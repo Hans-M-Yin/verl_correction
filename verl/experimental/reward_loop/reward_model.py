@@ -20,8 +20,8 @@ from verl.single_controller.ray.base import RayResourcePool, split_resource_pool
 from verl.workers.config import HFModelConfig, RewardModelConfig
 from verl.workers.rollout.replica import get_rollout_replica_class
 
-logger = logging.getLogger(__file__)
-logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+logger = logging.getLogger(__name__)
+# logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 class RewardModelManager:
@@ -54,6 +54,7 @@ class RewardModelManager:
             if self.resource_pool  # colocate mode
             else self.config.n_gpus_per_node * self.config.nnodes  # standalone mode
         )
+
         num_replicas = world_size // rollout_world_size
 
         rollout_replica_class = get_rollout_replica_class(self.config.rollout.name)
@@ -87,6 +88,7 @@ class RewardModelManager:
             self._run_all([server.init_standalone() for server in self.rollout_replicas])
         self.server_handles = [server._server_handle for server in self.rollout_replicas]
         self.server_addresses = [server._server_address for server in self.rollout_replicas]
+        logger.debug(f"^^^^^^^^^^^^^^^^^^^^^{self.server_addresses}^^^^^^^^^^^^^^^^^^^^")
 
     def _initialize_router(self):
         worker_urls = [f"http://{server_address}" for server_address in self.server_addresses]

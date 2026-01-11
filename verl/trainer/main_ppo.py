@@ -30,7 +30,8 @@ from verl.trainer.ppo.utils import need_critic, need_reference_policy
 from verl.utils.config import validate_config
 from verl.utils.device import auto_set_device, is_cuda_available
 from verl.utils.import_utils import load_extern_object
-
+import logging
+logger = logging.getLogger(__name__)
 
 @hydra.main(config_path="config", config_name="ppo_trainer", version_base=None)
 def main(config):
@@ -199,6 +200,7 @@ class TaskRunner:
             global_pool_id: [config.trainer.n_gpus_per_node] * config.trainer.nnodes,
         }
         # TODO Here you can use the new registration method to support dynamic registration of roles
+        logger.warning(f" {config.reward_model.n_gpus_per_node} {config.reward_model.nnodes}")
         if config.reward_model.enable_resource_pool:
             if config.reward_model.n_gpus_per_node <= 0:
                 raise ValueError("config.reward_model.n_gpus_per_node must be greater than 0")
@@ -316,7 +318,7 @@ class TaskRunner:
         val_reward_fn = load_reward_manager(
             config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {})
         )
-
+        logger.warning(f"@@@@@@@@@@@@@@@@@@@@@@@@ REWARD1, {type(reward_fn)} | REWARD2, {type(val_reward_fn)}")
         resource_pool_manager = self.init_resource_pool_mgr(config)
 
         from verl.utils.dataset.rl_dataset import collate_fn

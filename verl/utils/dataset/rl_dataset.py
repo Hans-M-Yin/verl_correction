@@ -386,7 +386,7 @@ class RLHFDataset(Dataset):
             videos: List of videos, each video is a tuple of (video_tensor, video_metadata).
         """
         from qwen_vl_utils import process_vision_info
-
+        # logger.warning('#########',messages,'##############')
         images, videos = process_vision_info(messages, image_patch_size=image_patch_size, return_video_metadata=True)
         return images, videos
 

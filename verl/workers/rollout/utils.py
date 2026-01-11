@@ -59,7 +59,7 @@ def get_free_port(address: str) -> tuple[int, socket.socket]:
 
 async def run_unvicorn(app: FastAPI, server_args, server_address, max_retries=5) -> tuple[int, asyncio.Task]:
     server_port, server_task = None, None
-
+    logger.warning(f"@@@@@@@@@@@@@@@@@@@@@@@{max_retries} @@@@@@@@@@@@@@")
     for i in range(max_retries):
         try:
             server_port, sock = get_free_port(server_address)
@@ -71,10 +71,10 @@ async def run_unvicorn(app: FastAPI, server_args, server_address, max_retries=5)
             server_task = asyncio.create_task(server.main_loop())
             break
         except (OSError, SystemExit) as e:
-            logger.error(f"Failed to start HTTP server on port {server_port} at try {i}, error: {e}")
+            logger.warning(f"#####################Failed to start HTTP server on port {server_port} at try {i}, error: {e}")
     else:
-        logger.error(f"Failed to start HTTP server after {max_retries} retries, exiting...")
+        logger.warning(f"######################Failed to start HTTP server after {max_retries} retries, exiting...")
         os._exit(-1)
 
-    logger.info(f"HTTP server started on port {server_port}")
+
     return server_port, server_task

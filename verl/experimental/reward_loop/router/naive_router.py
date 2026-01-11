@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse
 from verl.workers.rollout.utils import get_free_port, is_valid_ipv6_address
 
 logger = logging.getLogger(__name__)
-logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+# logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 async def _read_async_response(resp: aiohttp.ClientResponse) -> dict[str, Any]:
@@ -70,7 +70,7 @@ def launch_router_process(
     time.sleep(3)
     assert router_process.is_alive()
 
-    logger.info(f"Router is running on {router_address}")
+    print(f"@@@@@@@@@@@@@@@@@@@@@@@@@Router is running on {router_address}")
     return router_address, router_process
 
 
@@ -140,8 +140,8 @@ class NaiveRouter:
         worker_url = self._select_worker()
         target_url = f"{worker_url}/{endpoint}"
 
-        if self.verbose:
-            logger.debug(f"[router] Forwarding request → {target_url}")
+        # if self.verbose:
+        logger.debug(f"[router] Forwarding request → {target_url}")
 
         # Copy request data
         body = await request.body()
