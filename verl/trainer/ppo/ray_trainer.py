@@ -806,7 +806,7 @@ class RayPPOTrainer:
         2. Worker groups for each role (actor, critic, etc.)
         """
         self.resource_pool_manager.create_resource_pool()
-
+        logger.warning(f"日了够了 {self.resource_pool_manager.resource_pool_dict.values()}")
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
         # create actor and rollout
@@ -916,8 +916,11 @@ class RayPPOTrainer:
                     OmegaConf.select(self.config.global_profiler.global_tool_config.nsys, "worker_nsight_options")
                 )
         wg_kwargs["device_name"] = self.device_name
-
+        logger.warning(f"糊涂啊{self.resource_pool_to_cls}")
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
+            if len(class_dict) == 0:
+                continue
+            logger.warning(f"")
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(
                 resource_pool=resource_pool,

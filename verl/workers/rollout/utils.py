@@ -59,7 +59,6 @@ def get_free_port(address: str) -> tuple[int, socket.socket]:
 
 async def run_unvicorn(app: FastAPI, server_args, server_address, max_retries=5) -> tuple[int, asyncio.Task]:
     server_port, server_task = None, None
-    logger.warning(f"@@@@@@@@@@@@@@@@@@@@@@@{max_retries} @@@@@@@@@@@@@@")
     for i in range(max_retries):
         try:
             server_port, sock = get_free_port(server_address)

@@ -22,7 +22,7 @@ import re
 import logging
 
 logger = logging.getLogger(__name__)
-test_ip = "222.29.51.247:18904"
+test_ip = "172.17.0.2:18903"
 model_name = "qwen3-vl-8b"
 async def re_hard_match(answer: str):
     if not answer:
@@ -65,6 +65,7 @@ async def re_hard_match(answer: str):
 
 async def chat_complete(router_address: str, chat_complete_request: dict):
     url = f"http://{router_address}/v1/chat/completions"
+    # print("正在突击欧金金")
     try:
         timeout = aiohttp.ClientTimeout(total=None)
         session = aiohttp.ClientSession(timeout=timeout)
@@ -227,7 +228,7 @@ async def compute_score(
     reward_router_address: str,
     reward_model_tokenizer: PreTrainedTokenizer,
 ):
-    logger.warning(f'@@@@@@@@@@ {reward_router_address}')
+    # logger.warning(f'@@@@@@@@@@ {reward_router_address}')
     try:
         """Compute the reward score."""
         is_format_error = False

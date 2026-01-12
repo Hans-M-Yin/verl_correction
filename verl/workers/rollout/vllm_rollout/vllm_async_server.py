@@ -329,7 +329,8 @@ class vLLMHttpServer:
                     # If it's a full path, extract the last part as model name
                     served_model_name = served_model_name.split("/")[-1]
                 args["served_model_name"] = served_model_name
-
+        else:
+            args['served_model_name'] = "qwen3-vl-8b"
         if self.config.expert_parallel_size > 1:
             assert self.gpus_per_node % self.config.tensor_model_parallel_size == 0, (
                 "gpus_per_node should be divisible by tensor_model_parallel_size"
@@ -410,7 +411,6 @@ class vLLMHttpServer:
 
     async def run_server(self, args: argparse.Namespace):
         args.max_model_len = 8000
-        args.served_model_name = "qwen3-vl-8b"
         engine_args = AsyncEngineArgs.from_cli_args(args)
         usage_context = UsageContext.OPENAI_API_SERVER
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
@@ -423,6 +423,7 @@ class vLLMHttpServer:
             kwargs["disable_log_stats"] = engine_args.disable_log_stats
         # logger.warning('#################################',kwargs)
         engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
+        engine_client.model = "qwen3-vl-8b"
 
         # Don't keep the dummy data in memory
         await engine_client.reset_mm_cache()
@@ -437,7 +438,7 @@ class vLLMHttpServer:
 
         self.engine = engine_client
         self._server_port, self._server_task = await run_unvicorn(app, args, self._server_address)
-        logger.warning(f"&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& PORT:{self._server_port}")
+        # logger.warning(f"&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& PORT:{self._server_port}")
 
     async def run_headless(self, args: argparse.Namespace):
         # Create the EngineConfig.
@@ -559,10 +560,33 @@ class vLLMHttpServer:
             await asyncio.gather(*[worker.wake_up.remote() for worker in self.workers])
         elif self.rollout_mode == RolloutMode.COLOCATED:
             # Directly call engine to wake up without sync weights.
-            logger.warning("操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈")
+            # logger.warning("操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈")
             if self.node_rank == 0:
                 await self.engine.wake_up(tags=["kv_cache", "weights"])
-                logger.warning("!@#$%^&*()启动完毕应该才对!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()")
+                # logger.warning("!@#$%^&*()启动完毕应该才对!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()")
+                # logger.warning(f"齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀 Is running: {self.engine.is_running} Health: {await self.engine.check_health()}")
+                from openai import OpenAI
+                client = OpenAI(
+                    api_key="EMPTY",
+                    base_url=f"http://{self._server_address}:{self._server_port}/v1"
+                )
+                # logger.warning(f"#######################3 {await client.models.list()}")
+                # response = client.chat.completions.create(
+                #     model="qwen3-vl-8b",
+                #     messages = [
+                #         {
+                #             "role": "user",
+                #             "content": [
+                #                 {
+                #                     "type": "text",
+                #                     "text": "请问你是谁？"
+                #                 }
+                #             ]
+                #         }
+                #     ],
+                # )
+                # response = response.choices[0].message.content
+                # logger.warning(f"{response} THIS IS THE RESULT. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip wake_up in standalone mode")
 

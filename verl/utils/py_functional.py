@@ -145,7 +145,8 @@ def timeout_limit(seconds: float, use_signals: bool = False):
 
     return decorator
 
-
+import logging
+logger = logging.getLogger(__name__)
 def union_two_dict(dict1: dict, dict2: dict):
     """Union two dict. Will throw an error if there is an item not the same object with the same key.
 
@@ -156,6 +157,7 @@ def union_two_dict(dict1: dict, dict2: dict):
     Returns:
 
     """
+    logger.warning(f" ## dict1 {dict1}  ## dict2 {dict2}")
     for key, val in dict2.items():
         if key in dict1:
             assert dict2[key] == dict1[key], f"{key} in meta_dict1 and meta_dict2 are not the same object"
