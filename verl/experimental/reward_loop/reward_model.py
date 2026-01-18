@@ -62,7 +62,7 @@ class RewardModelManager:
         model_config = HFModelConfig(
             path=self.config.model.path,
             external_lib=self.config.model.external_lib,
-            trust_remote_code=self.config.model.trust_remote_code,
+            trust_remote_code=True,
         )
         self.tokenizer = model_config.get_processor()
         self.rollout_replicas = [

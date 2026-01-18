@@ -1,5 +1,6 @@
 set -x
 ENGINE=${1:-vllm}
+RESUME_PATH="checkpoints/verl_correction/qwen2_5_vl_3b_data1_3k/global_step_150"
 
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -57,6 +58,8 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     trainer.save_freq=30 \
     trainer.test_freq=5 \
     trainer.total_epochs=6 \
+    trainer.resume_mode="resume_path" \
+    trainer.resume_from_path="$RESUME_PATH" \
     trainer.validation_data_dir=./rollout_saved \
     custom_reward_function.path=perception/reward_function_loop.py \
     custom_reward_function.name=compute_score $@

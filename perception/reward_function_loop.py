@@ -1,16 +1,3 @@
-# Copyright 2025 Bytedance Ltd. and/or its affiliates
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import json
 import os
@@ -24,39 +11,32 @@ import logging
 logger = logging.getLogger(__name__)
 test_ip = "172.17.0.2:18903"
 model_name = "qwen3-vl-8b"
+# model_name = "qwen3-vl-30b-a3b"
 async def re_hard_match(answer: str):
     if not answer:
         return None
     s = answer.strip()
-
     # 1. 明确的指示词 + 字母 (最高优先级)
-    # 增加 "综上"、"最后" 等词汇
     phrase_pattern = re.compile(
         r'(?i)(?:综上所述|总结|最终|答案|选择|choose|is|are|是|为|答案[:：]|选项)[:：\s]*([A-F])\b'
     )
     m = phrase_pattern.findall(s)
     if m: return m[-1].upper() # 取最后一个出现的明确答案
-
     # 2. Markdown 加粗形式 **A** (高优先级)
     md_pattern = re.compile(r'(?i)\*\*\s*([A-F])\s*\*\*')
     m = md_pattern.findall(s)
     if m: return m[-1].upper()
-
     # 3. 括号/标点包围
     bracket_pattern = re.compile(
         r'(?:(?<=\()|(?<=\[)|(?<=\{)|(?<=（)|(?<=【))\s*([A-Fa-f])\s*(?=[\)\]\}）】])'
     )
     m = bracket_pattern.findall(s)
     if m: return m[-1].upper()
-
     # 4. 字母 + 标点/空白 (如 "C.", "D:", "A ")
-    # 注意避免匹配到单词开头，\b 很重要
     punct_pattern = re.compile(r'(?i)\b([A-F])(?=[\.\)\]：:）】\s]|$)')
     m = punct_pattern.findall(s)
     if m: return m[-1].upper()
-
     # 5. 独立字母（全文本只有一个字母的情况）
-    # 如果全文只有 1 个 A-F 的字母，那基本就是它了
     pure_letter = re.findall(r'(?i)\b([A-F])\b', s)
     if len(set(pure_letter)) == 1:
         return pure_letter[0].upper()
@@ -74,6 +54,7 @@ async def chat_complete(router_address: str, chat_complete_request: dict):
             output = json.loads(output)
             return ChatCompletion(**output)
     except Exception as e:
+        logger.warning(f"Chat Failed!")
         raise e
     finally:
         await session.close()
@@ -125,11 +106,12 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed":42,
-            "temperature":0.1,  # Lower temperature for more deterministic judgement
-            "extra_body":{
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
+            "seed":32768,
+            "repetition_penalty":1.0,
+            "presence_penalty":2.0,
+            "top_p":1.0,
+            "top_k":40,
+            "temperature":1.0,  # Lower temperature for more deterministic judgement
         }
         chat_response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = chat_response.choices[0].message.content.strip()
@@ -155,39 +137,54 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
     reward_router_address: str,
     reward_model_tokenizer: PreTrainedTokenizer
  ):
+    think_process = solution_str
+    if "</think>" in solution_str:
+        if think_process.count("</think>") > 1:
+            pattern = r'</?(think|answer)>'
+            think_process = re.sub(pattern, '', think_process)
+        think_process = think_process[:think_process.find("</think>")]
+
     modify_info = extra_info['modify_info']
     num_modify = extra_info['num_modify']
 
-    modify_info_str = "\n".join([str(idx) + f". {k[0]}" for idx, k in enumerate(modify_info)])
+    modify_info_str = "\n".join([str(idx + 1) + f". ## {k[0]} ##" for idx, k in enumerate(modify_info)])
 
     if not reward_router_address:
         logger.warning("Reward function client not initialized or model name not found.")
         return 0.0
     system_prompt = """
-    You are an expert evaluator. Your task is to determine whether the model's output contains specific information, i.e., to detect whether the target text is present in the model's output text.    
+You are an expert evaluator. Your task is to determine whether the given paragraph contains specific information.
 
-    1. Make judgments based on the semantic meaning of the model's output. As long as the meaning is consistent with the specific information provided by the user, that information is considered to be present. 
-    2. The user will provide you with several pieces of specific information, and you need to search the model's output to determine whether each corresponding piece of content appears.
-    3. Strictly follow the format below: According to the order of the specific information provided by the user, output whether each corresponding piece appears in sequence. Output YES if it appears, and NO if it does not. Separate multiple outputs with spaces, and add a index before each answer.
+Instructions:
+1. Place YES/NO based on whether the piece of specific information is present semantically. Only when the text fully mentions the specific information explictly, you will place a YES. 
+2. Judge each piece of information item by item. Each item you ONLY need to check whether the text clearly contains the specific information.
+3. For each specific information you must output ONLY ONE SINGLE YES/NO. Do NOT repeat the same item of specific information, a single specific information matches only ONE output.
+4. Output MUST be in this exact format: <think>your think process, how you determine each specific information</think><answer>YES/NO YES/NO (totally the same number with pieces of specific information) </answer>
 
-    For example:
-    [Model's Output]: <think>In the image there is a sequence of green apples in the left but not the right. Instead the girl is in the right side of the image. We can indicate that the girl is going to eat the apple. So the final answer is C.</think><answer>C</answer>
-    [Specific Information]:
-    1. Apple is green.
-    2. There is one green apple.
-    2. The boy is in the right side.
-    [Your Answer]:
-    1.YES 2.NO 3.NO
-    (Here is the reason, and you don't need to output the reason: In the provided output, the model points out that the apple is green. But the model outputs the wrong number of apples. Thirdly, in the image it's a boy but not a girl. So the ideal determination is YES NO YES.)  
+Example:
+[Given text]: "The apple is green. A girl is on the right."
+[Specific Information]:
+"1. ## Apple is green and there is also a banana. ##
+2. ## There is one green apple. ##
+3. ## The boy is in the right side. The boy is looking at his phone. ##" 
+
+Your response:
+<think>
+1. ## Apple is green and there is also a banana ##: Text says apple is green → YES
+2. ## There is one green apple. ##: Text mentions a sequence of apples, not ONE apple → NO  
+3. ## The boy is in the right side. The boy is looking at his phone. ##: Text says girl, not boy, and text doesn't mention phone. → NO
+</think>
+<answer> YES NO NO </answer>
     """
     user_prompt = f"""
-    I will provide a model's output, and several specific information. You must determine if the model's output contains these information respectively.
-    Remember to follow the instruction and the format! 
-    [Model's Output]: {solution_str}
-    [Specific Information]: 
-    {modify_info_str}
-    [Your Answer]:
-    """
+I will provide you with a given text paragraph, and several specific information. For each piece of specific information, you must determine if the text paragraph contains the information.
+Remember to follow the instruction and the format! your evaluation must match the specific information each by each.
+[Given text]: "{think_process}"
+[Specific Information]: 
+"{modify_info_str}"
+
+Your response:
+"""
     try:
         chat_complete_request = {
             "model":model_name,
@@ -195,29 +192,37 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed":42,
-            "temperature":0.1,  # Lower temperature for more deterministic judgement
+            "seed":32768,
+            "repetition_penalty":1.0,
+            "presence_penalty":2.0,
+            "top_p":1.0,
+            "top_k":40,
+            "temperature":1.0,  # Lower temperature for more deterministic judgement
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
     except Exception as e:
-        logger.warning(f" [WARNING] Chat completion request failed: {e}")
+        logger.warning("Failure when computing correction reward")
         return 0, 0, False
-    if "boxed{" in response:
-        response = response[response.find("boxed{"):]
-    print(response)
-    correction_count = response.lower().count("yes")
-    failure_count = response.lower().count("no")
-    # success = True
+    response_temp = response
+    if "<answer>" in response and "</answer>" in response:
+        response_temp = re.findall(r'<answer>(.*?)</answer>', response)
+        if len(response_temp) > 1:
+            logger.warning(f"Multiple answers found: {response_temp}")
+        response_temp = response_temp[-1]
+    else:
+        logger.warning(f"Wrong format when parsing correction reward: {response.replace("\n", " ")}")
+    correction_count = response_temp.lower().count("yes")
+    failure_count = response_temp.lower().count("no")
+    # logger.warning(f"########### {solution_str.replace("\n"," ")} || TEMPLATE {modify_info_str.replace("\n", "    ")} || ANSWER || {response.replace("\n"," ")}")
     if correction_count + failure_count != num_modify:
-        if correction_count + failure_count / 2 == num_modify:
-            logger.warning(f"Perhaps misalignment correction output: Requires: {num_modify}, received: {response} ({correction_count} + {failure_count})")
+        if (correction_count + failure_count) / 2 == num_modify:
+            logger.warning(f"Perhaps misalignment correction output: Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response.replace("\n", " ")} ({correction_count} + {failure_count})")
             correction_count = int(correction_count / 2)
             failure_count = int(failure_count / 2)
         else:
             logger.warning(
-            f" [WARNING] No enough correction output. Requires: {num_modify}, received: {response} ({correction_count} + {failure_count})")
-        # success = False
+                f" [WARNING] No enough correction output. Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response.replace("\n", " ")} ({correction_count} + {failure_count})")
     return correction_count, failure_count, True
 
 async def compute_score(
@@ -228,24 +233,24 @@ async def compute_score(
     reward_router_address: str,
     reward_model_tokenizer: PreTrainedTokenizer,
 ):
-    # logger.warning(f'@@@@@@@@@@ {reward_router_address}')
+    acc_reward, format_reward, correction_reward = 0, 0, 0
     try:
         """Compute the reward score."""
         is_format_error = False
+        if extra_info['type'] == 2:
+            count_think_1 = solution_str.count("<think>")
+            count_think_2 = solution_str.count("</think>")
+            if count_think_2 != 1 or count_think_1 != 0:
+                is_format_error = True
+        else:
 
-        # 1. Check <think> tag format
-        count_think_1 = solution_str.count("<think>")
-        count_think_2 = solution_str.count("</think>")
-        if count_think_1 != count_think_2:
-            is_format_error = True
+            count_think_1 = solution_str.count("<think>")
+            count_think_2 = solution_str.count("</think>")
+            if count_think_1 != 1 or count_think_2 != 1:
+                is_format_error = True
 
-        # 2. Check vision tokens (skip this since tokenizer removes special tokens)
-        # We'll use <tool_call> and <tool_response> instead to detect tool usage
-
-        # 3. Extract answer text with multiple fallback strategies
         answer_text = ""
 
-        # Strategy 1: Try to extract from <answer> tags first
         predict_no_think = (
             solution_str.split("</think>")[-1].strip() if "</think>" in solution_str else solution_str.strip()
         )
@@ -265,17 +270,11 @@ async def compute_score(
             is_format_error = True
 
             if "</think>" in solution_str:
-                # Remove any remaining tool-related tags and extract meaningful content
                 answer_text = solution_str.split("</think>")[-1]
-                # answer_text = remaining_content.strip()
+
             else:
-                # Strategy 4: Use the entire solution_str as fallback
                 answer_text = solution_str.strip()
-
-        # Clean up answer text
         answer_text = answer_text.strip()
-
-        # If answer is still empty after all strategies, mark as format error
         if not answer_text:
             is_format_error = True
             answer_text = solution_str.strip()  # Use full text as last resort
@@ -286,12 +285,8 @@ async def compute_score(
             acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
         else:
             acc_reward = await llm_as_judge(data_source, answer_text, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
-
-
-        # Format reward: penalty for format errors
         format_reward = -1.0 if is_format_error else 0.0
 
-        # Log debug information for problematic cases
         if is_format_error or not answer_text:
             logger.debug(
                 f"Format issue detected:\n"
@@ -299,21 +294,21 @@ async def compute_score(
                 f"Extracted answer: '{answer_text}'\n"
                 f"Format error: {is_format_error}\n"
             )
-
         correction_reward = acc_reward
         if extra_info['type'] == 1:
-            correction_count, failure_count, state = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+            correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+            # correction_count= 0
+            state = True
             if state:
                 correction_reward = correction_count / extra_info['num_modify']
-
-        logger.info(f"{acc_reward} | {format_reward} | {correction_reward}")
+            else:
+                logger.warning("Encounter failure when calculating correction reward ")
+        # logger.info(f"{acc_reward} | {format_reward} | {correction_reward}")
         # Final weighted score
         final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.8 * correction_reward
     except Exception as e:
         final_score = 0
-
-    # logger.warning('@@@@@@@@@@',acc_reward, format_reward, correction_reward)
-    return {"score": final_score}
+    return {"score": final_score, "acc_reward": acc_reward, "format_reward": correction_reward}
 
 
 if __name__ == "__main__":
@@ -325,14 +320,14 @@ if __name__ == "__main__":
         "question": "△ABC的两内角平分线OB、OC相交于点O，若∠A＝110°，则∠BOC＝（）",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
         "caption_modified": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，并且相交于点A，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "modify_info": [["A在上方顶点，B在左下", "B在上方顶点，A在左下"], ['O位于三角形内部', 'O位于三角形外部'],
-                        ["最终是两条角平分线在O点相交", '两条角平分线在A点相交']],
+        "modify_info": [[" Triangle ABC is isosceles with AB = AC."], [' Vertices are arranged with A at the top and base BC horizontal, B at the left end of the base and C at the right end.'],
+                        [" Point E lies on side CA with CE = 4 and AE = 3/2 (so AC = AB = 4 + 3/2 = 5.5)."], ["The angle at D of triangle FDE satisfies ∠FDE = ∠B (that is, ∠FDE equals angle ABC)."]],
         "num_modify": 3,
         "original_output": "Hello"
     }
 
-    solution_str = """好的。为了计算∠BOC，我们只需要知道∠OBC和∠OCB。现在让我在看一下图，等下，图片中A在上方，B在下方，并且原图中两条角平分线相交于O，而不是A点。假设∠A=110°，那么∠OBC+∠OCB=35°，所以∠BOC=180°-35°=145°。答案选A。 A选项应该是对的。"""
+    solution_str = """ The role of point D is key in solving this problem. vertices are arranged  that not options are perpendicular. Assumes: Connectivity of Structure D is perpendicular's A. Therefore, D is at the center of the equilateral triangle BCA, such that BD = 2, DC =  3, and triangle D is central Proper positioning ensures that AB = AC and triangles ABF and AEC similar. Hence, sum BD+DF = DC+AF = AB, or BD+DF= AB+2/3AF=5, Therefore, triangle BDF similar to triangle ABC Hence, DF= cube root of third parts of AB^2/3 DF = lastay,  d name divide lastayEasy Following formula for triangle BDE Similar to triangle ABCassumed asserting BDE= 1/3angle ABC  EF = DF/ BSINопределations a used as task similar To triangle DIFFtriangle DEF same angle ABC refers to  AE triangle of sums altags triangle BDF B = total triangle ADE object sum Segment intersecting triangle ADE simplifies to  further maximize collage categorized into angles bijection Similar triangle FBC  Using trigonometric properties of right triangles. Although this problem involves two right triangles, a solution based on trigonometric identities can be derived as follows:  .getItemValue legacy verifies that abject should then directly substitute right triangle inequal Solution of triangle ABC with the known parameters A = 72 degrees, b = 1/5/6 Afterwards the objective of finding the altitude and similiar triangle ACB where 1/5 correct as ~ (triangle) triangle  similarity  [Triangle] BDF similarity triangle ABCwe can determine the ratio of the segments it next simplifies into b / alt1 para triangle triangle 1 /2 drop  Purpose Confirming BDFDBF = C_2 and BC = 3/3 verticalup / 3 Hence DF = SIGI triangle ABCIn same as the sum triangle BDFDC grounding trial either angles BDE similMS DDF slope DAFC dropconfirmationCAB triangleAl)= (Sigrantangle triangle DBC squareComparison solving KIND copyrights commonMSo BDFDC  This can resolve triangle BFLSAC Triangle DILSO symbolicate DFFDI triangle Altitude as [missing] = the altitude side = signice Thus, triangle FDE in x divisions powerExplicity set 6 + ratio of result in '.6' triangular_get_first answer to </think> <think> The known information suggests that the angles ∠B and ∠FDE in triangle FDE are congruent, which indicates that triangle FDE is similar to triangle ACB. According to the property of similar triangles, the ratio of the corresponding sides of similar triangles is equal, and the ratio of the corresponding heights of similar triangles is also equal. Assume that the ratio of the sides AB and AC is the same ratio of BC and FD where AC=2/3AB and BC=2/3FD. Required angle at E are present in spirit. A is a given angle in all triangles. Therefore, the ratio of the corresponding sides of equilateral triangle is (BC) and (FD) is 2 </think>"""
 
     # 使用 asyncio.run() 运行异步函数
-    answer = asyncio.run(compute_score("编的", solution_str, "A", extra_info, test_ip, None))
+    answer = asyncio.run(compute_correction_reward("编的", solution_str, "A", extra_info, test_ip, None))
     print(f"Score: {answer}")

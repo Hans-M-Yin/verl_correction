@@ -262,6 +262,7 @@ class AgentLoopBase(ABC):
         Returns:
             list[int]: Prompt token ids.
         """
+        # logger.warning(f"Prompt {messages} | Image {images}")
         if self.processor is not None:
             raw_prompt = await self.loop.run_in_executor(
                 None,
@@ -273,14 +274,21 @@ class AgentLoopBase(ABC):
                     **self.apply_chat_template_kwargs,
                 ),
             )
-
+            # print(type(self.processor))
+            if messages[-1]['role'] == 'assistant':
+                # We need to delete the end of this sentence.
+                # **Notice** that currently we just implement the code for Qwen2.5-VL, other models' modification will be implemented soon.
+                # logger.warning(f"## After applying chat template: {raw_prompt.replace("\n"," ")} | ")
+                tmp = raw_prompt
+                raw_prompt = raw_prompt[:raw_prompt.rfind("<|im_end|>")]
+                # logger.warning(f"## After applying chat template: {raw_prompt.replace("\n"," ")} | {tmp.replace("\n"," ")}")
+            # print(raw_prom)
             # split the videos and according metadatas
             if videos is not None:
                 videos, video_metadatas = zip(*videos, strict=False)
                 videos, video_metadatas = list(videos), list(video_metadatas)
             else:
                 video_metadatas = None
-
             model_inputs = self.processor(
                 text=[raw_prompt],
                 images=images,
@@ -290,6 +298,8 @@ class AgentLoopBase(ABC):
                 do_sample_frames=False,
             )
             prompt_ids = model_inputs.pop("input_ids").squeeze(0).tolist()
+            # logger.warning(f"## After Processing: {prompt_ids}")
+
         else:
             prompt_ids = await self.loop.run_in_executor(
                 None,
@@ -475,7 +485,6 @@ class AgentLoopWorker:
                     self._run_agent_loop(sampling_params, trajectory_info[i], trace=trace_this_sample, **kwargs)
                 )
             )
-        # logger.warning("@@@@@@@@@@@@ 3.草你妈妈")
 
         outputs = await asyncio.gather(*tasks)
 
@@ -492,8 +501,6 @@ class AgentLoopWorker:
         trace: bool = True,
         **kwargs,
     ) -> _InternalAgentLoopOutput:
-        # logger.warning("@@@@@@@@@@@@ 4.你奶啊你的")
-
         with rollout_trace_attr(
             step=trajectory["step"],
             sample_index=trajectory["sample_index"],
@@ -760,7 +767,7 @@ class AgentLoopWorker:
             },
             batch_size=len(inputs),
         )
-
+        # logger.debug(f"input_ids: {input_ids} | attention_mask: {attention_mask}")
         scores = [input.reward_score for input in inputs]
         if all(score is not None for score in scores):
             prompt_length = prompt_ids.size(1)
@@ -904,7 +911,7 @@ class AgentLoopManager:
         self.server_handles = [server._server_handle for server in self.rollout_replicas]
         self.server_addresses = [server._server_address for server in self.rollout_replicas]
 
-        print(f"AgentLoopManager: {self.server_addresses}")
+        # print(f"AgentLoopManager: {self.server_addresses}")
 
         # Update Prometheus configuration with server addresses
         if rollout_config.prometheus.enable:

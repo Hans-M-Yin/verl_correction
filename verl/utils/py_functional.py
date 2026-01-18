@@ -157,10 +157,11 @@ def union_two_dict(dict1: dict, dict2: dict):
     Returns:
 
     """
-    logger.warning(f" ## dict1 {dict1}  ## dict2 {dict2}")
+    # logger.warning(f" ## dict1 {dict1}  ## dict2 {dict2}")
     for key, val in dict2.items():
         if key in dict1:
-            assert dict2[key] == dict1[key], f"{key} in meta_dict1 and meta_dict2 are not the same object"
+            if dict1[key] is not None and isinstance(dict1[key], list) and len(dict1[key]) > 0:
+                assert dict2[key] == dict1[key], f"{key} in meta_dict1 and meta_dict2 are not the same object"
         dict1[key] = val
 
     return dict1

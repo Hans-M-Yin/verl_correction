@@ -321,6 +321,10 @@ class vLLMHttpServer:
             **engine_kwargs,
         }
 
+        # manually modify
+        args['enforce_eager'] = False
+        # args['disable_custom_all_reduce'] = False
+
         if self.config.prometheus.enable:
             if self.config.prometheus.served_model_name:
                 # Extract model name from path if it's a full path
@@ -410,7 +414,7 @@ class vLLMHttpServer:
             await self.run_headless(server_args)
 
     async def run_server(self, args: argparse.Namespace):
-        args.max_model_len = 8000
+        args.max_model_len = 10000
         engine_args = AsyncEngineArgs.from_cli_args(args)
         usage_context = UsageContext.OPENAI_API_SERVER
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
@@ -478,6 +482,7 @@ class vLLMHttpServer:
         # Calculate the maximum possible new tokens based on available context space
         # This serves as a safety upper bound
         max_possible_tokens = self.config.max_model_len - len(prompt_ids)
+        # logger.info(f"#### This time max possible tokens:{max_possible_tokens} (CONFIG{self.config.max_model_len}, CNT: {len(prompt_ids)})")
         if max_possible_tokens < 0:
             raise ValueError(
                 f"Prompt length ({len(prompt_ids)}) exceeds the model's maximum context length "
@@ -486,13 +491,20 @@ class vLLMHttpServer:
 
         # Determine max_tokens from sampling_params or use configured response_length as default
         if "max_tokens" in sampling_params:
-            max_tokens = sampling_params.pop("max_tokens")
+            logger.info(f"Max tokens: {sampling_params['max_tokens']}")
+            # max_tokens = sampling_params.pop("max_tokens")
         elif "max_new_tokens" in sampling_params:
             # support sglang-style 'max_new_tokens' param
+            # logger.info(f"Max NEW tokens: {sampling_params['max_new_tokens']}")
+
             max_tokens = sampling_params.pop("max_new_tokens")
         else:
             # Default to a calculation that considers configured lengths
             max_tokens = self.config.response_length + self.config.prompt_length - len(prompt_ids)
+            # logger.info(f"Calculated: {max_tokens} | {self.config.response_length} | {self.config.prompt_length} | {len(prompt_ids)}")
+        # if len(prompt_ids) > self.config.response_length + self.config.prompt_length:
+            # logger.warning(f"### Over long:{prompt_ids}")
+        # assert max_tokens > 0, f"Max tokens less than 0, {max_tokens} {self.config.response_length} | {self.config.prompt_length} | {len(prompt_ids)}"
 
         # Clamp max_tokens to the valid range [0, max_possible_tokens]
         max_tokens = max(0, min(max_tokens, max_possible_tokens))
@@ -560,33 +572,13 @@ class vLLMHttpServer:
             await asyncio.gather(*[worker.wake_up.remote() for worker in self.workers])
         elif self.rollout_mode == RolloutMode.COLOCATED:
             # Directly call engine to wake up without sync weights.
-            # logger.warning("操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈操死你妈")
             if self.node_rank == 0:
                 await self.engine.wake_up(tags=["kv_cache", "weights"])
-                # logger.warning("!@#$%^&*()启动完毕应该才对!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()!@#$%^&*()")
-                # logger.warning(f"齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀齀 Is running: {self.engine.is_running} Health: {await self.engine.check_health()}")
                 from openai import OpenAI
                 client = OpenAI(
                     api_key="EMPTY",
                     base_url=f"http://{self._server_address}:{self._server_port}/v1"
                 )
-                # logger.warning(f"#######################3 {await client.models.list()}")
-                # response = client.chat.completions.create(
-                #     model="qwen3-vl-8b",
-                #     messages = [
-                #         {
-                #             "role": "user",
-                #             "content": [
-                #                 {
-                #                     "type": "text",
-                #                     "text": "请问你是谁？"
-                #                 }
-                #             ]
-                #         }
-                #     ],
-                # )
-                # response = response.choices[0].message.content
-                # logger.warning(f"{response} THIS IS THE RESULT. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip wake_up in standalone mode")
 

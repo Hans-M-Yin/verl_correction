@@ -673,14 +673,12 @@ class RayPPOTrainer:
             if not self.async_rollout_mode:
                 test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
             else:
-                logger.warning("#################### 你好！！ ########################")
-
                 test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
 
-            logger.warning(f"#################### validation generation end: {test_output_gen_batch_padded} ########################")
+            # logger.warning(f"#################### validation generation end: {test_output_gen_batch_padded} ########################")
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
@@ -696,6 +694,12 @@ class RayPPOTrainer:
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
+            # logger.warning("###### BEFORE")
+            rm_scores = self.reward_loop_manager.compute_rm_score(test_batch)
+            # logger.warning(f"###### AFTER ")
+
+            test_batch = test_batch.union(rm_scores)
+            # logger.warning(f"###### ZZZZZZz {"rm_scores" in test_batch.batch.keys()}")
 
             # evaluate using reward_function
             result = self._compute_or_extract_reward(test_batch, reward_fn=self.val_reward_fn, return_dict=True)
@@ -806,7 +810,6 @@ class RayPPOTrainer:
         2. Worker groups for each role (actor, critic, etc.)
         """
         self.resource_pool_manager.create_resource_pool()
-        logger.warning(f"日了够了 {self.resource_pool_manager.resource_pool_dict.values()}")
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
         # create actor and rollout
@@ -916,11 +919,9 @@ class RayPPOTrainer:
                     OmegaConf.select(self.config.global_profiler.global_tool_config.nsys, "worker_nsight_options")
                 )
         wg_kwargs["device_name"] = self.device_name
-        logger.warning(f"糊涂啊{self.resource_pool_to_cls}")
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
             if len(class_dict) == 0:
                 continue
-            logger.warning(f"")
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(
                 resource_pool=resource_pool,
