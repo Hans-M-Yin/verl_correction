@@ -425,7 +425,7 @@ class vLLMHttpServer:
             kwargs["enable_log_requests"] = engine_args.enable_log_requests
         if "disable_log_stats" in fn_args:
             kwargs["disable_log_stats"] = engine_args.disable_log_stats
-        # logger.warning('#################################',kwargs)
+        logger.warning(f'################爹################# {vllm_config}')
         engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
         engine_client.model = "qwen3-vl-8b"
 

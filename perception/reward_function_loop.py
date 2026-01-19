@@ -160,6 +160,7 @@ Instructions:
 2. Judge each piece of information item by item. Each item you ONLY need to check whether the text clearly contains the specific information.
 3. For each specific information you must output ONLY ONE SINGLE YES/NO. Do NOT repeat the same item of specific information, a single specific information matches only ONE output.
 4. Output MUST be in this exact format: <think>your think process, how you determine each specific information</think><answer>YES/NO YES/NO (totally the same number with pieces of specific information) </answer>
+5. If the given text seems containing heavy repetition, please output REPEAT.
 
 Example:
 [Given text]: "The apple is green. A girl is on the right."
@@ -205,10 +206,14 @@ Your response:
         logger.warning("Failure when computing correction reward")
         return 0, 0, False
     response_temp = response
+    # repeat punishment
+    if "REPEAT" in response_temp:
+        logger.warning(f"Detect REPEAT: ###{think_process.replace("\n", " ")}###")
+        return -num_modify, 0, True
     if "<answer>" in response and "</answer>" in response:
         response_temp = re.findall(r'<answer>(.*?)</answer>', response)
         if len(response_temp) > 1:
-            logger.warning(f"Multiple answers found: {response_temp}")
+            logger.warning(f"Multiple answers found: {response_temp} | {response.replace("\n", " ")}")
         response_temp = response_temp[-1]
     else:
         logger.warning(f"Wrong format when parsing correction reward: {response.replace("\n", " ")}")
@@ -305,10 +310,10 @@ async def compute_score(
                 logger.warning("Encounter failure when calculating correction reward ")
         # logger.info(f"{acc_reward} | {format_reward} | {correction_reward}")
         # Final weighted score
-        final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.8 * correction_reward
+        final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward
     except Exception as e:
         final_score = 0
-    return {"score": final_score, "acc_reward": acc_reward, "format_reward": correction_reward}
+    return {"score": final_score, "acc_reward": acc_reward, "correction_reward": correction_reward, "format_reward": format_reward}
 
 
 if __name__ == "__main__":
