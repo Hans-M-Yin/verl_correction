@@ -45,6 +45,7 @@ async def re_hard_match(answer: str):
 
 async def chat_complete(router_address: str, chat_complete_request: dict):
     url = f"http://{router_address}/v1/chat/completions"
+    # print("正在突击欧金金")
     try:
         timeout = aiohttp.ClientTimeout(total=None)
         session = aiohttp.ClientSession(timeout=timeout)
@@ -159,6 +160,7 @@ Instructions:
 2. Judge each piece of information item by item. Each item you ONLY need to check whether the text clearly contains the specific information.
 3. For each specific information you must output ONLY ONE SINGLE YES/NO. Do NOT repeat the same item of specific information, a single specific information matches only ONE output.
 4. Output MUST be in this exact format: <think>your think process, how you determine each specific information</think><answer>YES/NO YES/NO (totally the same number with pieces of specific information) </answer>
+5. If the given text seems containing heavy repetition, please output REPEAT.
 
 Example:
 [Given text]: "The apple is green. A girl is on the right."
@@ -205,6 +207,9 @@ Your response:
         return 0, 0, False
     response_temp = response
     # repeat punishment
+    if "REPEAT" in response_temp:
+        logger.warning(f"Detect REPEAT: ###{think_process.replace("\n", " ")}###")
+        return -num_modify, 0, True
     if "<answer>" in response and "</answer>" in response:
         response_temp = re.findall(r'<answer>(.*?)</answer>', response)
         if len(response_temp) > 1:
@@ -225,19 +230,6 @@ Your response:
                 f" [WARNING] No enough correction output. Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response.replace("\n", " ")} ({correction_count} + {failure_count})")
     return correction_count, failure_count, True
 
-def ngram_repetition_ratio(tokens, n, eps=0.85):
-    ngrams = [
-        tuple(tokens[i:i+n])
-        for i in range(len(tokens) - n + 1)
-    ]
-    if len(ngrams) == 0:
-        return 0.0
-
-    unique_ngrams = set(ngrams)
-    rep = 1.0 - len(unique_ngrams) / len(ngrams)
-
-    return 0.0 if rep < eps else -rep
-
 async def compute_score(
     data_source: str,
     solution_str: str,
@@ -247,14 +239,11 @@ async def compute_score(
     reward_model_tokenizer: PreTrainedTokenizer,
 ):
     # logger.warning(f"&&&&{solution_str}&&&&")
-    if len(solution_str) < 50:
-        logger.warning(f"####Output: {solution_str}")
-    acc_reward, format_reward, correction_reward, repeat_penalty = 0, 0, 0, 0
+    acc_reward, format_reward, correction_reward = 0, 0, 0
     try:
-    # if True:
         """Compute the reward score."""
         is_format_error = False
-        if extra_info['type'] == 1:
+        if extra_info['type'] == 2:
             count_think_1 = solution_str.count("<think>")
             count_think_2 = solution_str.count("</think>")
             if count_think_2 != 1 or count_think_1 != 0:
@@ -320,16 +309,12 @@ async def compute_score(
                 correction_reward = correction_count / extra_info['num_modify']
             else:
                 logger.warning("Encounter failure when calculating correction reward ")
-
-        repeat_penalty = ngram_repetition_ratio(predict_no_think, 3)
-
-        final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward + 0.6 * repeat_penalty
-        if final_score < -0.4:
-            logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
+        # logger.info(f"{acc_reward} | {format_reward} | {correction_reward}")
+        # Final weighted score
+        final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward
     except Exception as e:
-        print(e)
         final_score = 0
-    return {"score": final_score, "acc_reward": acc_reward, "correction_reward": correction_reward, "format_reward": format_reward, "repeat_penalty": -repeat_penalty}
+    return {"score": final_score, "acc_reward": acc_reward, "correction_reward": correction_reward, "format_reward": format_reward}
 
 
 if __name__ == "__main__":
@@ -347,20 +332,8 @@ if __name__ == "__main__":
         "original_output": "Hello"
     }
 
-    solution_str = """I need to think about the colors and endpoints correctly.  The Sky Blue line starts at approximate
-ly 9 and ends at approximately 44, making its total area (area under the curve): (9+44)*2  Violet line starts at approximately
- 15 and ends at approximately 8. Area = (15+8)*2  Sandy Brown line starts at approximately 19 and ends at approximately 44. Ar
-ea = (19+44)*2  Dark Khaki line starts at approximately 22 and ends at approximately 8. Area = (22+8)*2  Light Sky Blue line s
-tarts at approximately 10 and ends at approximately 45. Area = (10+45)*2  Navy Blue line starts at approximately 62 and ends a
-t approximately 8. Area = (62+8)*2  Since there is only one color that increases and the others decrease in a non-interrupted
-manner, let's correct the overall understanding. Gold lines are the Light Sky Blue and Sky Blue curves in this graph.  For eac
-h Light Sky Blue and Sky Blue line, the area calculation leads to: (2*2*(0+20)/2)+(2*2*(20+24)/2) Which______: [(20+24)*2)]  T
-o determine the difference in total area between Navy Blue and the color with the second largest area:  Sky Blue: (44+9)*2 = 1
-06 Sandy Brown: (44+19)*2 = 136 Dark Khaki: (8+22)*2 = 64 Light Sky Blue: (44+10)*2 = 108  Violet: (8+15)*2 = 46  Navy Blue: (
-20+33)*2 = 106  Now, let's calculate the difference in area first:  106 (Navy Blue) - 106 (Sky Blue) = 0 106 (Navy Blue) - 136
- (Sandy Brown) = -30 106 (Navy Blue) - 64 (Dark Khaki) = 42 106 (Navy Blue) - 108 (Light Sky Blue) = -2 106 (Navy Blue) - 46 (
-Violet) = 60  So, the difference in area between Navy Blue and the color with the second largest area is 42.  Final answer: 42
- </think> <answer> 42</answer>"""
+    solution_str = """ The role of point D is key in solving this problem. vertices are arranged  that not options are perpendicular. Assumes: Connectivity of Structure D is perpendicular's A. Therefore, D is at the center of the equilateral triangle BCA, such that BD = 2, DC =  3, and triangle D is central Proper positioning ensures that AB = AC and triangles ABF and AEC similar. Hence, sum BD+DF = DC+AF = AB, or BD+DF= AB+2/3AF=5, Therefore, triangle BDF similar to triangle ABC Hence, DF= cube root of third parts of AB^2/3 DF = lastay,  d name divide lastayEasy Following formula for triangle BDE Similar to triangle ABCassumed asserting BDE= 1/3angle ABC  EF = DF/ BSINопределations a used as task similar To triangle DIFFtriangle DEF same angle ABC refers to  AE triangle of sums altags triangle BDF B = total triangle ADE object sum Segment intersecting triangle ADE simplifies to  further maximize collage categorized into angles bijection Similar triangle FBC  Using trigonometric properties of right triangles. Although this problem involves two right triangles, a solution based on trigonometric identities can be derived as follows:  .getItemValue legacy verifies that abject should then directly substitute right triangle inequal Solution of triangle ABC with the known parameters A = 72 degrees, b = 1/5/6 Afterwards the objective of finding the altitude and similiar triangle ACB where 1/5 correct as ~ (triangle) triangle  similarity  [Triangle] BDF similarity triangle ABCwe can determine the ratio of the segments it next simplifies into b / alt1 para triangle triangle 1 /2 drop  Purpose Confirming BDFDBF = C_2 and BC = 3/3 verticalup / 3 Hence DF = SIGI triangle ABCIn same as the sum triangle BDFDC grounding trial either angles BDE similMS DDF slope DAFC dropconfirmationCAB triangleAl)= (Sigrantangle triangle DBC squareComparison solving KIND copyrights commonMSo BDFDC  This can resolve triangle BFLSAC Triangle DILSO symbolicate DFFDI triangle Altitude as [missing] = the altitude side = signice Thus, triangle FDE in x divisions powerExplicity set 6 + ratio of result in '.6' triangular_get_first answer to </think> <think> The known information suggests that the angles ∠B and ∠FDE in triangle FDE are congruent, which indicates that triangle FDE is similar to triangle ACB. According to the property of similar triangles, the ratio of the corresponding sides of similar triangles is equal, and the ratio of the corresponding heights of similar triangles is also equal. Assume that the ratio of the sides AB and AC is the same ratio of BC and FD where AC=2/3AB and BC=2/3FD. Required angle at E are present in spirit. A is a given angle in all triangles. Therefore, the ratio of the corresponding sides of equilateral triangle is (BC) and (FD) is 2 </think>"""
+
     # 使用 asyncio.run() 运行异步函数
-    answer = asyncio.run(compute_score("编的", solution_str, "A", extra_info, test_ip, None))
+    answer = asyncio.run(compute_correction_reward("编的", solution_str, "A", extra_info, test_ip, None))
     print(f"Score: {answer}")
