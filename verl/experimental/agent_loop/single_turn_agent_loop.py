@@ -45,12 +45,15 @@ class SingleTurnAgentLoop(AgentLoopBase):
         images = multi_modal_data.get("images")
         videos = multi_modal_data.get("videos")
 
+        # 01-22 add step for apply_chat_template, where adding trigger needs step value.
+        step = kwargs.get("step", -1)
         # 2. apply chat template and tokenize
         prompt_ids = await self.apply_chat_template(
             messages,
             tools=self.tool_schemas,
             images=images,
             videos=videos,
+            step=step,
         )
 
         # 3. generate sequences

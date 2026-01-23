@@ -248,6 +248,7 @@ class AgentLoopBase(ABC):
         tools: list[dict] = None,
         images: list[Image.Image] = None,
         videos: list[tuple[torch.Tensor, dict]] = None,
+        step: int = -1,
         remove_system_prompt: bool = False,
     ):
         """Apply chat template to messages with optional tools, images, and videos.
@@ -264,10 +265,13 @@ class AgentLoopBase(ABC):
         """
         # logger.warning(f"Prompt {messages} | Image {images}")
         if messages[-1]['role'] == 'assistant':
+            #
+            # if step == -1:
+
             triggers = [
                 "Wait, I may be mistaken about what I see in the image.",
                 "Wait, I may be mistaken about what I see in the image,",
-                "Wait, I may be mistaken about what I see in the image, so I should double-check the image: ",
+                "Hold on, I may be mistaken about what I see in the image, so I should double-check the image: ",
                 "But I may make mistake about the image content. I will try to correct what I say previously.",
                 "But I may have misinterpreted some visual details in the image.",
                 "Wait, let's double check.",
@@ -451,8 +455,6 @@ class AgentLoopWorker:
             repetition_penalty=1.0,
             logprobs=config.calculate_log_probs,
         )
-        # logger.warning("@@@@@@@@@@@@ 2.傻逼东西")
-
         # override sampling params for validation
         if batch.meta_info.get("validate", False):
             sampling_params["top_p"] = config.val_kwargs.top_p
@@ -524,6 +526,8 @@ class AgentLoopWorker:
             assert agent_name in _agent_loop_registry, (
                 f"Agent loop {agent_name} not registered, registered agent loops: {_agent_loop_registry.keys()}"
             )
+
+            kwargs['step'] = trajectory["step"]
 
             agent_loop_config = _agent_loop_registry[agent_name]
             agent_loop = hydra.utils.instantiate(
@@ -963,7 +967,6 @@ class AgentLoopManager:
         self.wake_up()
         if self.reward_model_manager:
             self.reward_model_manager.wake_up()
-        # logger.warning("@@@@@@@@@@@@ 1.猎杀开启")
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [
