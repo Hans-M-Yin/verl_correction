@@ -264,20 +264,20 @@ class AgentLoopBase(ABC):
             list[int]: Prompt token ids.
         """
         # logger.warning(f"Prompt {messages} | Image {images}")
-        if messages[-1]['role'] == 'assistant':
-            #
-            # if step == -1:
-
-            triggers = [
-                "Wait, I may be mistaken about what I see in the image.",
-                "Wait, I may be mistaken about what I see in the image,",
-                "Hold on, I may be mistaken about what I see in the image, so I should double-check the image: ",
-                "But I may make mistake about the image content. I will try to correct what I say previously.",
-                "But I may have misinterpreted some visual details in the image.",
-                "Wait, let's double check.",
-                "Wait, is my previous output actually correct?",
-            ]
-            messages[-1]['content'][0]['text'] += " " + random.choice(triggers)
+        # if messages[-1]['role'] == 'assistant':
+        #     #
+        #     # if step == -1:
+        #
+        #     triggers = [
+        #         "Wait, I may be mistaken about what I see in the image.",
+        #         "Wait, I may be mistaken about what I see in the image,",
+        #         "Hold on, I may be mistaken about what I see in the image, so I should double-check the image: ",
+        #         "But I may make mistake about the image content. I will try to correct what I say previously.",
+        #         "But I may have misinterpreted some visual details in the image.",
+        #         "Wait, let's double check.",
+        #         "Wait, is my previous output actually correct?",
+        #     ]
+        #     messages[-1]['content'][0]['text'] += " " + random.choice(triggers)
             # print(messages[-1]['content'])
         if self.processor is not None:
             raw_prompt = await self.loop.run_in_executor(

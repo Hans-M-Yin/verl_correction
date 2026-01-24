@@ -65,6 +65,9 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.config import FSDPEngineConfig
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
+
+from perception.utils.utils import init_triggers, add_correction_trigger
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -368,6 +371,8 @@ class RayPPOTrainer:
         self.use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
 
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
+
+        init_triggers(self.config.trainer.trigger_file_path)
 
     def _create_dataloader(self, train_dataset, val_dataset, collate_fn, train_sampler: Optional[Sampler]):
         """
@@ -1441,6 +1446,18 @@ class RayPPOTrainer:
                 gen_batch_output = gen_batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
+                if self.config.trainer.enable_trigger:
+                    gen_batch_output = add_correction_trigger(
+                        gen_batch_output,
+                        rollout_n=self.config.actor_rollout_ref.rollout.n,
+                        global_step=self.global_steps,
+                        total_step=self.total_training_steps,
+                        warmup_ratio=self.config.trainer.trigger_warmup_ratio,
+                        start_ratio=self.config.trainer.trigger_start_ratio,
+                        final_ratio=self.config.trainer.trigger_final_ratio,
+                        mode=self.config.trainer.trigger_mode,
+                        enable_schedule=self.config.trainer.trigger_enable_schedule
+                    )
 
                 is_last_step = self.global_steps >= self.total_training_steps
                 with marked_timer("step", timing_raw):

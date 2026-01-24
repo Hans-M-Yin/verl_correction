@@ -146,7 +146,7 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
     modify_info = extra_info['modify_info']
     num_modify = extra_info['num_modify']
 
-    modify_info_str = "\n".join([str(idx + 1) + f". ## {k[0]} ##" for idx, k in enumerate(modify_info)])
+    modify_info_str = "\n ".join([f"<info{str(idx + 1)}>" + f" {k[0]} " + f"</info{str(idx + 1)}>" for idx, k in enumerate(modify_info)])
 
     if not reward_router_address:
         logger.warning("Reward function client not initialized or model name not found.")
@@ -156,24 +156,24 @@ You are an expert evaluator. Your task is to determine whether the given paragra
 
 Instructions:
 1. Place YES/NO based on whether the piece of specific information is present semantically. Only when the text fully mentions the specific information explictly, you will place a YES. 
-2. Judge each piece of information item by item. Each item you ONLY need to check whether the text clearly contains the specific information.
-3. For each specific information you must output ONLY ONE SINGLE YES/NO. Do NOT repeat the same item of specific information, a single specific information matches only ONE output.
-4. Output MUST be in this exact format: <think>your think process, how you determine each specific information</think><answer>YES/NO YES/NO (totally the same number with pieces of specific information) </answer>
+2. Judge each piece of information item by item. Each item you ONLY need to check whether the text CLEARLY and EXPLICITLY contains the specific information.
+3. For each specific information you must output ONLY ONE SINGLE YES/NO. If on specific information contains many pieces of description, this specific information will be regarded as 'YES' only when all pieces of information are present in th text paragraph, else you should output one 'NO'.
+4. Your response MUST be in this exact format: <think>your brief think process about how you determine each specific information</think><info1>YES/NO</info1> <info2>YES/NO</info2>... (totally the same number with pieces of specific information)
 
 Example:
 [Given text]: "The apple is green. A girl is on the right."
 [Specific Information]:
-"1. ## Apple is green and there is also a banana. ##
-2. ## There is one green apple. ##
-3. ## The boy is in the right side. The boy is looking at his phone. ##" 
+"<info1> Apple is green and there is also a banana. </info1>
+<info2> There is one green apple. </info2>
+<info3> The boy is in the right side. The boy is looking at his phone. </info3>" 
 
 Your response:
 <think>
-1. ## Apple is green and there is also a banana ##: Text says apple is green → YES
-2. ## There is one green apple. ##: Text mentions a sequence of apples, not ONE apple → NO  
-3. ## The boy is in the right side. The boy is looking at his phone. ##: Text says girl, not boy, and text doesn't mention phone. → NO
+1.  Apple is green and there is also a banana : Text says apple is green → YES
+2.  There is one green apple : Text mentions a sequence of apples, not ONE apple → NO  
+3.  The boy is in the right side. The boy is looking at his phone : Text says girl, not boy, and text doesn't mention phone. → NO
 </think>
-<answer> YES NO NO </answer>
+<info1> YES </info1> <info2> NO </info2> <info3> NO </info3> 
     """
     user_prompt = f"""
 I will provide you with a given text paragraph, and several specific information. For each piece of specific information, you must determine if the text paragraph contains the information.
@@ -196,7 +196,7 @@ Your response:
             "presence_penalty":2.0,
             "top_p":1.0,
             "top_k":40,
-            "temperature":1.0,  # Lower temperature for more deterministic judgement
+            "temperature":0.7,
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
@@ -204,25 +204,41 @@ Your response:
         logger.warning("Failure when computing correction reward")
         return 0, 0, False
     response_temp = response
-    # repeat punishment
-    if "<answer>" in response and "</answer>" in response:
-        response_temp = re.findall(r'<answer>(.*?)</answer>', response)
-        if len(response_temp) > 1:
-            logger.warning(f"Multiple answers found: {response_temp} | {response.replace("\n", " ")}")
-        response_temp = response_temp[-1]
-    else:
-        logger.warning(f"Wrong format when parsing correction reward: {response.replace("\n", " ")}")
-    correction_count = response_temp.lower().count("yes")
-    failure_count = response_temp.lower().count("no")
-    # logger.warning(f"########### {solution_str.replace("\n"," ")} || TEMPLATE {modify_info_str.replace("\n", "    ")} || ANSWER || {response.replace("\n"," ")}")
+    if "<info1>" in response:
+
+        response_temp = response[response.rfind("<info1>"):]
+
+    correction_count = 0
+    failure_count = 0
+    correct_correction_judgment_format = True
+    for i in range(num_modify):
+
+        cnt = re.findall( rf'<info{str(i + 1)}>(.*?)</info{str(i + 1)}>', response_temp, re.DOTALL)
+        if len(cnt) < 1:
+            correct_correction_judgment_format = False
+            logger.warning(f"######### Not qualified correction judgement: {response}")
+
+            break
+        else:
+            cnt_yes_count = cnt[-1].lower().count("yes")
+            cnt_no_count = cnt[-1].lower().count("no")
+            if cnt_yes_count > 1 or cnt_no_count > 1 or cnt_yes_count * cnt_no_count > 0:
+                logger.warning(f"######### Unsatisfied correction response:{response_temp.replace('\n', ' ')} ( current: {cnt} YES: {cnt_yes_count} NO: {cnt_no_count}")
+            correction_count += cnt_yes_count
+            failure_count += cnt_no_count
+    if not correct_correction_judgment_format:
+        correction_count = response_temp.lower().count("yes")
+        failure_count = response_temp.lower().count("no")
+    # logger.warning(f"########### {solution_str.replace("\n"," ")} || TEMPLATE {modify_info_str.replace("\n", "    ")} || ANSWER || {response.replace("\n"," ")} || CORRECT: {correction_count}, FAILURE: {failure_count}")
     if correction_count + failure_count != num_modify:
         if (correction_count + failure_count) / 2 == num_modify:
-            logger.warning(f"Perhaps misalignment correction output: Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response.replace("\n", " ")} ({correction_count} + {failure_count})")
+            logger.warning(f"Perhaps misalignment correction output: Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response_temp.replace("\n", " ")} ({correction_count} + {failure_count})")
             correction_count = int(correction_count / 2)
             failure_count = int(failure_count / 2)
         else:
             logger.warning(
-                f" [WARNING] No enough correction output. Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response.replace("\n", " ")} ({correction_count} + {failure_count})")
+                f" [WARNING] No enough correction output. Requires: {num_modify}({modify_info_str.replace("\n", "    ")}), received: {response_temp.replace("\n", " ")} ({correction_count} + {failure_count})")
+        return 0,0, False
     return correction_count, failure_count, True
 
 def ngram_repetition_ratio(tokens, n, eps=0.85):
@@ -314,18 +330,25 @@ async def compute_score(
         correction_reward = acc_reward
         if extra_info['type'] == 1:
             correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
-            # correction_count= 0
-            state = True
             if state:
                 correction_reward = correction_count / extra_info['num_modify']
+                if correction_reward > 1.0:
+                    logger.warning(f"Bigger correction reward than excepted:{correction_reward}")
+                    correction_reward = 1.0
             else:
                 logger.warning("Encounter failure when calculating correction reward ")
 
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 3)
-
-        final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward + 0.6 * repeat_penalty
+        if repeat_penalty < -0.1:
+            final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.8 * repeat_penalty
+        else:
+            final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.4:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
+        elif final_score > 1.5:
+            logger.warning(
+                f"Reward more: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
+
     except Exception as e:
         print(e)
         final_score = 0
