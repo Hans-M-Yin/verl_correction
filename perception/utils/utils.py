@@ -40,6 +40,7 @@ def sample_trigger(prompt):
             if isinstance(prompt_assistant['content'], list):
                 language = "chinese" if has_chinese(prompt_assistant['content'][-1]['text']) else "english"
                 prompt_assistant['content'][-1]['text'] += " " + random.choice(triggers[language])
+                # logger.warning(f"### Current :{prompt_assistant['content'][-1]['text']}")
             elif isinstance(prompt_assistant['content'], str):
                 language = "chinese" if has_chinese(prompt_assistant['content']) else "english"
                 prompt_assistant['content'] += " " + random.choice(triggers[language])
@@ -104,29 +105,38 @@ def add_correction_trigger(
                 #     logger.warning(f"{j} : {new_batch.non_tensor_batch['prompt'][j]}")
 
                 for j in range(start_idx, end_idx):
-                    # logger.warning(f"########## BEFORE {j} : {new_batch.non_tensor_batch['raw_prompt'][j]}")
+                    # logger.warning(f"########## BEFORE {j} : {new_batch.non_tensor_batch['prompt'][j]}")
                     if 'prompt' in new_batch.non_tensor_batch:
                         new_batch.non_tensor_batch['prompt'][j] = sample_trigger(new_batch.non_tensor_batch['prompt'][j])
                     elif 'prompt' in new_batch.batch:
                         new_batch.batch['prompt'][j] = sample_trigger(new_batch.batch['prompt'][j])
                     if 'raw_prompt' in new_batch.non_tensor_batch:
-                        new_batch.non_tensor_batch['prompt'][j] = new_batch.non_tensor_batch['prompt'][j]
+                        new_batch.non_tensor_batch['raw_prompt'][j] = new_batch.non_tensor_batch['prompt'][j]
                     elif 'raw_prompt' in new_batch.batch:
                         new_batch.batch['raw_prompt'][j] = new_batch.batch['prompt'][j]
-                    # logger.warning(f"########## AFTER {j} : {new_batch.non_tensor_batch['raw_prompt'][j]}")
+                    # logger.warning(f"########## AFTER {j} : {new_batch.non_tensor_batch['prompt'][j]}")
 
     elif mode == 'part':
         add_trigger_num_per_sample = int(rollout_n * trigger_prob)
+        logger.warning(f"################### PER_SAMPLE{add_trigger_num_per_sample}")
         for i in range(num_samples):
             start_idx = i * rollout_n
             # end_idx = start_idx + rollout_n
             if new_batch.non_tensor_batch['extra_info'][start_idx]['type'] != 1:
                 continue
             for j in range(start_idx, start_idx + add_trigger_num_per_sample):
+                # logger.warning(f"########## {add_trigger_num_per_sample} BEFORE {j} : {new_batch.non_tensor_batch['prompt'][j]}")
+
+                if 'prompt' in new_batch.non_tensor_batch:
+                    new_batch.non_tensor_batch['prompt'][j] = sample_trigger(new_batch.non_tensor_batch['prompt'][j])
+                elif 'prompt' in new_batch.batch:
+                    new_batch.batch['prompt'][j] = sample_trigger(new_batch.batch['prompt'][j])
                 if 'raw_prompt' in new_batch.non_tensor_batch:
-                    new_batch.non_tensor_batch['raw_prompt'][j] = sample_trigger(new_batch.non_tensor_batch['raw_prompt'][j])
+                    new_batch.non_tensor_batch['raw_prompt'][j] = new_batch.non_tensor_batch['prompt'][j]
                 elif 'raw_prompt' in new_batch.batch:
-                    new_batch.batch['raw_prompt'][j] = sample_trigger(new_batch.batch['raw_prompt'][j])
+                    new_batch.batch['raw_prompt'][j] = new_batch.batch['prompt'][j]
+                # logger.warning(f"########## {add_trigger_num_per_sample} AFTER {j} : {new_batch.non_tensor_batch['prompt'][j]}")
+
     else:
         raise NotImplementedError
 

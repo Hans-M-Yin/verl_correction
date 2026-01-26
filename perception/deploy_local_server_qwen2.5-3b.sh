@@ -1,4 +1,4 @@
-MODEL_PATH="/root/autodl-tmp/qwen2.5-vl-3b"
+MODEL_PATH="/share3/yzh/qwen2.5-vl-3b"
 PORT=18903
 SERVED_NAME="qwen2.5-vl-3b"
 TENSOR_PARALLEL_SIZE=1

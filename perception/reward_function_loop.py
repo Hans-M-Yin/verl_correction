@@ -241,7 +241,7 @@ Your response:
         return 0,0, False
     return correction_count, failure_count, True
 
-def ngram_repetition_ratio(tokens, n, eps=0.85):
+def ngram_repetition_ratio(tokens, n, eps=0.7):
     ngrams = [
         tuple(tokens[i:i+n])
         for i in range(len(tokens) - n + 1)
@@ -338,16 +338,13 @@ async def compute_score(
             else:
                 logger.warning("Encounter failure when calculating correction reward ")
 
-        repeat_penalty = ngram_repetition_ratio(predict_no_think, 3)
+        repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 1.0 * repeat_penalty
         else:
-            final_score = 0.8 * acc_reward + 0.4 * format_reward + 0.4 * correction_reward + 0.8 * repeat_penalty
-        if final_score < -0.4:
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * correction_reward + 1.0 * repeat_penalty
+        if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
-        elif final_score > 1.5:
-            logger.warning(
-                f"Reward more: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
     except Exception as e:
         print(e)
