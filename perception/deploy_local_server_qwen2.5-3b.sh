@@ -1,6 +1,6 @@
-MODEL_PATH="/share3/yzh/qwen2.5-vl-3b"
+MODEL_PATH="/root/autodl-tmp/qwen2.5-vl-7b"
 PORT=18903
-SERVED_NAME="qwen2.5-vl-3b"
+SERVED_NAME="qwen2.5-vl-7b"
 TENSOR_PARALLEL_SIZE=1
 MAX_MODEL_LEN=16000
 GPU_MEMORY_UTILIZATION=0.8
