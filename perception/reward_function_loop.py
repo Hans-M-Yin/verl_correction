@@ -340,11 +340,11 @@ async def compute_score(
 
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 1.0 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * correction_reward + 1.0 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.5:
-            logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | {correction_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
+            logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
     except Exception as e:
         print(e)

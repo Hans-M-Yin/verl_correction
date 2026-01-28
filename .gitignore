@@ -128,3 +128,10 @@ logs
 log
 outputs
 .history
+
+# rollout result
+rollout_new_reward
+rollout_remove_correction_reward
+rollout_saved
+rollout_saved_0125_part_trigger
+rollout_saved_STANDARAD_0120_135554
