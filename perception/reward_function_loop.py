@@ -291,7 +291,7 @@ async def compute_score(
         # Check <answer> tag format
         count_answer_1 = predict_no_think.count("<answer>")
         count_answer_2 = predict_no_think.count("</answer>")
-        if count_answer_1 != count_answer_2:
+        if count_answer_1 != 1 or count_answer_2 != 1:
             is_format_error = True
 
         # Try to extract from <answer> tags
