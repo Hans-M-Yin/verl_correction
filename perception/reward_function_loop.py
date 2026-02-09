@@ -42,7 +42,6 @@ async def re_hard_match(answer: str):
         return pure_letter[0].upper()
     return None
 
-
 async def chat_complete(router_address: str, chat_complete_request: dict):
     url = f"http://{router_address}/v1/chat/completions"
     try:
@@ -282,7 +281,7 @@ async def compute_score(
             if count_think_1 != 1 or count_think_2 != 1:
                 is_format_error = True
 
-        answer_text = ""
+        answer_text = None
 
         predict_no_think = (
             solution_str.split("</think>")[-1].strip() if "</think>" in solution_str else solution_str.strip()
@@ -305,28 +304,25 @@ async def compute_score(
             if "</think>" in solution_str:
                 answer_text = solution_str.split("</think>")[-1]
 
-            else:
-                answer_text = solution_str.strip()
-        answer_text = answer_text.strip()
-        if not answer_text:
-            is_format_error = True
-            answer_text = solution_str.strip()  # Use full text as last resort
 
-        re_match_answer = await re_hard_match(answer_text)
-        # print(f"Hard match {re_match_answer}")
-        if re_match_answer is not None:
-            acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
-        else:
-            acc_reward = await llm_as_judge(data_source, answer_text, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
         format_reward = -1.0 if is_format_error else 0.0
 
-        if is_format_error or not answer_text:
-            logger.debug(
-                f"Format issue detected:\n"
-                f"Solution: {solution_str[:200]}...\n"
-                f"Extracted answer: '{answer_text}'\n"
-                f"Format error: {is_format_error}\n"
-            )
+        if not answer_text:
+            is_format_error = True
+            acc_reward = await llm_as_judge(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+            # logger.warning(f" #### Error when judging: {is_format_error} | {answer_text} | Solution str: {solution_str.replace('\n',' ')} | GT: {ground_truth} | LLM judge result: {acc_reward}")
+        else:
+            answer_text = answer_text.strip()
+            if answer_text.lower().strip() == ground_truth.lower().strip():
+                acc_reward = 1.0
+            else:
+                re_match_answer = await re_hard_match(answer_text)
+                # print(f"Hard match {re_match_answer} | {answer_text}")
+                if re_match_answer is not None:
+                    acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
+                else:
+                    acc_reward = await llm_as_judge(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+
         correction_reward = acc_reward
         if extra_info['type'] == 1:
             correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
@@ -350,7 +346,6 @@ async def compute_score(
         print(e)
         final_score = 0
     return {"score": final_score, "acc_reward": acc_reward, "correction_reward": correction_reward, "format_reward": format_reward, "repeat_penalty": -repeat_penalty}
-
 
 if __name__ == "__main__":
     extra_info = {
@@ -380,7 +375,7 @@ o determine the difference in total area between Navy Blue and the color with th
 20+33)*2 = 106  Now, let's calculate the difference in area first:  106 (Navy Blue) - 106 (Sky Blue) = 0 106 (Navy Blue) - 136
  (Sandy Brown) = -30 106 (Navy Blue) - 64 (Dark Khaki) = 42 106 (Navy Blue) - 108 (Light Sky Blue) = -2 106 (Navy Blue) - 46 (
 Violet) = 60  So, the difference in area between Navy Blue and the color with the second largest area is 42.  Final answer: 42
- </think> <answer> 42</answer>"""
+ </think>"""
     # 使用 asyncio.run() 运行异步函数
     answer = asyncio.run(compute_score("编的", solution_str, "A", extra_info, test_ip, None))
     print(f"Score: {answer}")
