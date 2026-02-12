@@ -477,6 +477,7 @@ class RayPPOTrainer:
         lines = []
         for i in range(n):
             entry = {k: v[i] for k, v in base_data.items()}
+            # logger.warning(f'################### {entry}')
             lines.append(json.dumps(entry, ensure_ascii=False))
 
         with open(filename, "w") as f:

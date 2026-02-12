@@ -9,7 +9,7 @@ import re
 import logging
 
 logger = logging.getLogger(__name__)
-test_ip = "172.17.0.2:18903"
+test_ip = "localhost:18903"
 model_name = "qwen3-vl-8b"
 # model_name = "qwen3-vl-30b-a3b"
 async def re_hard_match(answer: str):
@@ -41,6 +41,7 @@ async def re_hard_match(answer: str):
     if len(set(pure_letter)) == 1:
         return pure_letter[0].upper()
     return None
+
 
 async def chat_complete(router_address: str, chat_complete_request: dict):
     url = f"http://{router_address}/v1/chat/completions"
@@ -141,44 +142,83 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
             pattern = r'</?(think|answer)>'
             think_process = re.sub(pattern, '', think_process)
         think_process = think_process[:think_process.find("</think>")]
-
+    # think_process = extra_info['caption_modified'] + ' ' + think_process
     modify_info = extra_info['modify_info']
     num_modify = extra_info['num_modify']
 
-    modify_info_str = "\n ".join([f"<info{str(idx + 1)}>" + f" {k[0]} " + f"</info{str(idx + 1)}>" for idx, k in enumerate(modify_info)])
+    modify_info_str = "\n ".join([f"<info{str(idx + 1)}>" + f" Wrong: {k[1]} → Correct: {k[0]} " + f"</info{str(idx + 1)}>" for idx, k in enumerate(modify_info)])
 
     if not reward_router_address:
         logger.warning("Reward function client not initialized or model name not found.")
         return 0.0
     system_prompt = """
-You are an expert evaluator. Your task is to determine whether the given paragraph contains specific information.
+You are an expert evaluator. Your task is to determine whether a given text exhibits EXPLICIT and COMPLETE self-correction behavior.
 
-Instructions:
-1. Place YES/NO based on whether the piece of specific information is present semantically. Only when the text fully mentions the specific information explictly, you will place a YES. 
-2. Judge each piece of information item by item. Each item you ONLY need to check whether the text CLEARLY and EXPLICITLY contains the specific information.
-3. For each specific information you must output ONLY ONE SINGLE YES/NO. If on specific information contains many pieces of description, this specific information will be regarded as 'YES' only when all pieces of information are present in th text paragraph, else you should output one 'NO'.
-4. Your response MUST be in this exact format: <think>your brief think process about how you determine each specific information</think><info1>YES/NO</info1> <info2>YES/NO</info2>... (totally the same number with pieces of specific information)
+You will receive:
 
-Example:
-[Given text]: "The apple is green. A girl is on the right."
-[Specific Information]:
-"<info1> Apple is green and there is also a banana. </info1>
-<info2> There is one green apple. </info2>
-<info3> The boy is in the right side. The boy is looking at his phone. </info3>" 
+1. [Given Text]: the text written by an author.
+2. [Information Items]: a list of pairs <info1>...</info1>, <info2>...</info2>, etc. 
+   Each item contains:
+   - Wrong Description: an incorrect statement.
+   - Correct Description: the correct statement that should replace it.
+
+Your goal is to judge, for each Information Item, whether the author in the Given Text:
+(A) explicitly recognized their own error, and
+(B) explicitly corrected that error with the correct description.
+
+Definitions:
+
+1. Explicit Error Recognition:
+   - The text must explicitly mention the Wrong Description (or a clearly equivalent statement).
+   - The text must explicitly negate it using clear linguistic markers such as:
+     "X is incorrect", "X is wrong", "not X", "I was wrong about X", "X should not be", etc.
+   - Merely omitting X or implying X is wrong is NOT sufficient.
+
+2. Explicit Correction:
+   - After negating the wrong description, the text must state a correction that matches the Correct Description.
+   - The correction must be explicit, not implied, and must semantically align with the Correct Description.
+
+Strict Rules:
+
+- Output YES only if BOTH explicit error recognition AND explicit correction are present.
+- If the text only states the correct fact but does NOT acknowledge the error, output NO.
+- If the text acknowledges uncertainty but does not negate the wrong description, output NO.
+- If the correction is implicit, paraphrased without negation, or logically inferred, output NO.
+- Evaluate each Information Item independently; do not transfer evidence across items.
+- Think BRIEFLY first. Do not repeat or output too long, and you MUST follow the response format below.
+
+Output Requirements:
+
+- For each Information Item, output exactly one label: YES or NO.
+- First provide a BRIEF reasoning for each item, then the labels.
+
+**Output FORMAT**:
+
+<think> reasoning process for each information item.</think><info1>YES/NO</info1><info2>YES/NO</info2>...
+
+
+**Example:**
+[Given Text]: "Actually, the apple is green, not red. The boy is on the right, holding a fresh banana."
+[Information Items]:
+<info1> Wrong: The apple is red. → Correct: The apple is green. </info1>
+<info2> Wrong: There is a sequence of apples. → Correct: There is one apple. </info2>
+<info3> Wrong: The girl is in the right side. → Correct: The boy is in the right side. </info3>
 
 Your response:
-<think>
-1.  Apple is green and there is also a banana : Text says apple is green → YES
-2.  There is one green apple : Text mentions a sequence of apples, not ONE apple → NO  
-3.  The boy is in the right side. The boy is looking at his phone : Text says girl, not boy, and text doesn't mention phone. → NO
+
+"<think> I will think step by step first.
+1. info1: The text explicitly denies "red" and states "green". → YES
+2. info2: The text does not mention "one apple" or state the quantity of apples. → NO
+3. info3: The text mentions "boy", which affirms the correct component, BUT the text does not deny the wrong part directly (e.g., 'there is a boy but not a girl'"), so even the correct part is stated, I will give a NO. → NO
+So I will give the final response now.
 </think>
-<info1> YES </info1> <info2> NO </info2> <info3> NO </info3> 
+<info1>YES</info1><info2>NO</info2><info3>NO</info3>"
     """
     user_prompt = f"""
 I will provide you with a given text paragraph, and several specific information. For each piece of specific information, you must determine if the text paragraph contains the information.
-Remember to follow the instruction and the format! your evaluation must match the specific information each by each.
+Remember to follow the instruction. You MUST follow the output FORMAT! your evaluation must match the specific information each by each.
 [Given text]: "{think_process}"
-[Specific Information]: 
+[Information Items]: 
 "{modify_info_str}"
 
 Your response:
@@ -190,15 +230,16 @@ Your response:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed":32768,
+            "seed":32767,
             "repetition_penalty":1.0,
             "presence_penalty":2.0,
             "top_p":1.0,
             "top_k":40,
-            "temperature":0.7,
+            "temperature":1.0,
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
+        # logger.warning(f"################ {response}")
     except Exception as e:
         logger.warning("Failure when computing correction reward")
         return 0, 0, False
@@ -220,9 +261,18 @@ Your response:
             break
         else:
             cnt_yes_count = cnt[-1].lower().count("yes")
+            # if cnt_yes_count > 0:
+                # logger.warning(f"######### [DEBUG] {response.replace('\n',' ')} ( ||||  {modify_info_str.replace('\n', ' ')}  |||| {solution_str.replace('\n', ' ')})")
             cnt_no_count = cnt[-1].lower().count("no")
             if cnt_yes_count > 1 or cnt_no_count > 1 or cnt_yes_count * cnt_no_count > 0:
-                logger.warning(f"######### Unsatisfied correction response:{response_temp.replace('\n', ' ')} ( current: {cnt} YES: {cnt_yes_count} NO: {cnt_no_count}")
+                if 'yes' in cnt[-1].lower().strip()[:-4]:
+                    cnt_no_count = 0
+                    cnt_yes_count = 1
+                elif 'no' in cnt[-1].lower().strip()[:-4]:
+                    cnt_no_count = 1
+                    cnt_yes_count = 0
+                else:
+                    logger.warning(f"######### Unsatisfied correction response:{response_temp.replace('\n', ' ')} ( current: {cnt} YES: {cnt_yes_count} NO: {cnt_no_count}")
             correction_count += cnt_yes_count
             failure_count += cnt_no_count
     if not correct_correction_judgment_format:
@@ -281,7 +331,7 @@ async def compute_score(
             if count_think_1 != 1 or count_think_2 != 1:
                 is_format_error = True
 
-        answer_text = None
+        answer_text = ""
 
         predict_no_think = (
             solution_str.split("</think>")[-1].strip() if "</think>" in solution_str else solution_str.strip()
@@ -304,25 +354,28 @@ async def compute_score(
             if "</think>" in solution_str:
                 answer_text = solution_str.split("</think>")[-1]
 
-
-        format_reward = -1.0 if is_format_error else 0.0
-
+            else:
+                answer_text = solution_str.strip()
+        answer_text = answer_text.strip()
         if not answer_text:
             is_format_error = True
-            acc_reward = await llm_as_judge(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
-            # logger.warning(f" #### Error when judging: {is_format_error} | {answer_text} | Solution str: {solution_str.replace('\n',' ')} | GT: {ground_truth} | LLM judge result: {acc_reward}")
-        else:
-            answer_text = answer_text.strip()
-            if answer_text.lower().strip() == ground_truth.lower().strip():
-                acc_reward = 1.0
-            else:
-                re_match_answer = await re_hard_match(answer_text)
-                # print(f"Hard match {re_match_answer} | {answer_text}")
-                if re_match_answer is not None:
-                    acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
-                else:
-                    acc_reward = await llm_as_judge(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+            answer_text = solution_str.strip()  # Use full text as last resort
 
+        re_match_answer = await re_hard_match(answer_text)
+        # print(f"Hard match {re_match_answer}")
+        if re_match_answer is not None:
+            acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
+        else:
+            acc_reward = await llm_as_judge(data_source, answer_text, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+        format_reward = -1.0 if is_format_error else 0.0
+
+        if is_format_error or not answer_text:
+            logger.debug(
+                f"Format issue detected:\n"
+                f"Solution: {solution_str[:200]}...\n"
+                f"Extracted answer: '{answer_text}'\n"
+                f"Format error: {is_format_error}\n"
+            )
         correction_reward = acc_reward
         if extra_info['type'] == 1:
             correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
@@ -333,7 +386,8 @@ async def compute_score(
                     correction_reward = 1.0
             else:
                 logger.warning("Encounter failure when calculating correction reward ")
-
+        else:
+            correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
             final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
@@ -347,6 +401,7 @@ async def compute_score(
         final_score = 0
     return {"score": final_score, "acc_reward": acc_reward, "correction_reward": correction_reward, "format_reward": format_reward, "repeat_penalty": -repeat_penalty}
 
+
 if __name__ == "__main__":
     extra_info = {
         "type": 1,
@@ -356,26 +411,13 @@ if __name__ == "__main__":
         "question": "△ABC的两内角平分线OB、OC相交于点O，若∠A＝110°，则∠BOC＝（）",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
         "caption_modified": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，并且相交于点A，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "modify_info": [[" Triangle ABC is isosceles with AB = AC."], [' Vertices are arranged with A at the top and base BC horizontal, B at the left end of the base and C at the right end.'],
-                        [" Point E lies on side CA with CE = 4 and AE = 3/2 (so AC = AB = 4 + 3/2 = 5.5)."], ["The angle at D of triangle FDE satisfies ∠FDE = ∠B (that is, ∠FDE equals angle ABC)."]],
-        "num_modify": 3,
+        "modify_info": [["Line segment EO is drawn such that it is perpendicular to AB at point O.",'Line segment EO is drawn such that it is perpendicular to CD at point O. '],
+                        ["Additionally, there is an angle labeled as ∠EOC = 35°.","Additionally, there is an angle labeled as ∠EOC = 55°."]],
+        "num_modify": 2,
         "original_output": "Hello"
     }
 
-    solution_str = """I need to think about the colors and endpoints correctly.  The Sky Blue line starts at approximate
-ly 9 and ends at approximately 44, making its total area (area under the curve): (9+44)*2  Violet line starts at approximately
- 15 and ends at approximately 8. Area = (15+8)*2  Sandy Brown line starts at approximately 19 and ends at approximately 44. Ar
-ea = (19+44)*2  Dark Khaki line starts at approximately 22 and ends at approximately 8. Area = (22+8)*2  Light Sky Blue line s
-tarts at approximately 10 and ends at approximately 45. Area = (10+45)*2  Navy Blue line starts at approximately 62 and ends a
-t approximately 8. Area = (62+8)*2  Since there is only one color that increases and the others decrease in a non-interrupted
-manner, let's correct the overall understanding. Gold lines are the Light Sky Blue and Sky Blue curves in this graph.  For eac
-h Light Sky Blue and Sky Blue line, the area calculation leads to: (2*2*(0+20)/2)+(2*2*(20+24)/2) Which______: [(20+24)*2)]  T
-o determine the difference in total area between Navy Blue and the color with the second largest area:  Sky Blue: (44+9)*2 = 1
-06 Sandy Brown: (44+19)*2 = 136 Dark Khaki: (8+22)*2 = 64 Light Sky Blue: (44+10)*2 = 108  Violet: (8+15)*2 = 46  Navy Blue: (
-20+33)*2 = 106  Now, let's calculate the difference in area first:  106 (Navy Blue) - 106 (Sky Blue) = 0 106 (Navy Blue) - 136
- (Sandy Brown) = -30 106 (Navy Blue) - 64 (Dark Khaki) = 42 106 (Navy Blue) - 108 (Light Sky Blue) = -2 106 (Navy Blue) - 46 (
-Violet) = 60  So, the difference in area between Navy Blue and the color with the second largest area is 42.  Final answer: 42
- </think>"""
+    solution_str = """However, ∠EOC = 35° but not 55°. The question asks for the measure of ∠AOD.\n\nNow, let's think through the question step by step:\n\n1. Since EO is perpendicular to AB, ∠EOB = 90°.\n2. ∠EOC = 35°, so ∠BOC = ∠EOB - ∠EOC = 90° - 35° = 55°.\n3. Since ∠AOD and ∠BOC are vertically opposite angles, they are equal. Therefore, ∠AOD = ∠BOC = 55°.\n\nSo, the measure of ∠AOD is 55 degrees.\n\n55."""
     # 使用 asyncio.run() 运行异步函数
     answer = asyncio.run(compute_score("编的", solution_str, "A", extra_info, test_ip, None))
     print(f"Score: {answer}")
