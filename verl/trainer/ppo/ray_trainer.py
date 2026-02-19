@@ -1609,6 +1609,11 @@ class RayPPOTrainer:
                             reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
                         batch.batch["token_level_scores"] = reward_tensor
 
+                        for key in reward_extra_infos_dict:
+                            if key != "score":
+                                this_val = np.array(reward_extra_infos_dict[key])
+                                metrics.update({f"critic/{key}/mean": np.mean(this_val)})
+
                         if reward_extra_infos_dict:
                             batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
 

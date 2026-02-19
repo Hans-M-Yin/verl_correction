@@ -71,7 +71,9 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
         "You are an expert evaluator. Your task is to determine if a model's answer is semantically equivalent to a "
         "provided standard answer, given a specific question.\n"
         "Your evaluation must be strict. The model's answer is only correct if it fully matches the meaning of the "
-        "standard answer.\n"
+        # "standard answer. \n"
+        "standard answer. However, ignore the units difference (for example, the model's answer miss the units) when evaluation.\n"
+        "Do not "
         'You must provide your final judgement as a single word: either "CORRECT" or "INCORRECT". Do not provide '
         "any explanation or other text."
     )
@@ -81,9 +83,9 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
         f"answer is correct.\n\n"
         f"---\n"
         f"**Example 1:**\n"
-        f"[Question]: Is the countertop tan or blue?\n"
-        f"[Standard Answer]: The countertop is tan.\n"
-        f"[Model's Answer]: tan\n"
+        f"[Question]: How long does the course maintain?\n"
+        f"[Standard Answer]: 30 mins.\n"
+        f"[Model's Answer]: 30.\n"
         f"[Your Judgement]: CORRECT\n"
         f"---\n"
         f"**Example 2:**\n"
@@ -98,6 +100,7 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
         f"[Model's Answer]: {answer_text}\n"
         f"[Your Judgement]:"
     )
+    # print(user_prompt)
     try:
         chat_complete_request = {
             "model":model_name,
@@ -114,6 +117,7 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
         }
         chat_response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = chat_response.choices[0].message.content.strip()
+        # print(f"##### {response} {answer_text} {ground_truth}")
     except Exception as e:
         logger.warning(f" [WARNING] Chat completion request failed: {e}")
         return 0.0
@@ -136,6 +140,7 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
     reward_router_address: str,
     reward_model_tokenizer: PreTrainedTokenizer
  ):
+    # logger.warning("SUPER POWER OF HANS MARCUS YIN.")
     think_process = solution_str
     if "</think>" in solution_str:
         if think_process.count("</think>") > 1:
@@ -362,9 +367,20 @@ async def compute_score(
             answer_text = solution_str.strip()  # Use full text as last resort
 
         re_match_answer = await re_hard_match(answer_text)
+        # print(re_match_answer, ' ###### MATCH ANSWER')
         # print(f"Hard match {re_match_answer}")
         if re_match_answer is not None:
-            acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
+            re_hard_match_ground_truth = await re_hard_match(ground_truth)
+            # print(re_hard_match_ground_truth, ' ###### MATCH ANSWER')
+
+            if re_hard_match_ground_truth is not None:
+                acc_reward = 1.0 if re_match_answer.lower().strip() == re_hard_match_ground_truth.lower().strip() else 0.0
+            else:
+                acc_reward = await llm_as_judge(data_source, answer_text, ground_truth, extra_info,
+                                                reward_router_address, reward_model_tokenizer)
+            if acc_reward < 1:
+                acc_reward = 1.0 if re_match_answer.lower().strip() == ground_truth.lower().strip() else 0.0
+
         else:
             acc_reward = await llm_as_judge(data_source, answer_text, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
         format_reward = -1.0 if is_format_error else 0.0
@@ -390,9 +406,9 @@ async def compute_score(
             correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * acc_reward * correction_reward + 0.8 * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * acc_reward * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
@@ -408,7 +424,7 @@ if __name__ == "__main__":
         "split": "train",
         "idx": 0,
         "answer": "A",
-        "question": "△ABC的两内角平分线OB、OC相交于点O，若∠A＝110°，则∠BOC＝（）",
+        "question": "How many is the apples?",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
         "caption_modified": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，并且相交于点A，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
         "modify_info": [["Line segment EO is drawn such that it is perpendicular to AB at point O.",'Line segment EO is drawn such that it is perpendicular to CD at point O. '],
@@ -417,7 +433,7 @@ if __name__ == "__main__":
         "original_output": "Hello"
     }
 
-    solution_str = """However, ∠EOC = 35° but not 55°. The question asks for the measure of ∠AOD.\n\nNow, let's think through the question step by step:\n\n1. Since EO is perpendicular to AB, ∠EOB = 90°.\n2. ∠EOC = 35°, so ∠BOC = ∠EOB - ∠EOC = 90° - 35° = 55°.\n3. Since ∠AOD and ∠BOC are vertically opposite angles, they are equal. Therefore, ∠AOD = ∠BOC = 55°.\n\nSo, the measure of ∠AOD is 55 degrees.\n\n55."""
+    solution_str = """<think> The color wheel in the image is a representation of the Hue-Saturation subspace. The saturation coefficient is the amount of color present in a hue. The more saturated a color is, the more it deviates from the center of the circle. Therefore, the color that is closest to the center of the circle will have the smallest saturation coefficient. In the image, color A is the closest to the center, so it has the smallest saturation coefficient. </think>\n<answer> A </answer>"""
     # 使用 asyncio.run() 运行异步函数
-    answer = asyncio.run(compute_score("编的", solution_str, "A", extra_info, test_ip, None))
+    answer = asyncio.run(compute_score("编的", solution_str, "A. No problem.", extra_info, test_ip, None))
     print(f"Score: {answer}")
