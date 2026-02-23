@@ -316,7 +316,6 @@ async def compute_score(
     reward_router_address: str,
     reward_model_tokenizer: PreTrainedTokenizer,
 ):
-    # logger.warning(f"&&&&{solution_str}&&&&")
     if len(solution_str) < 50:
         logger.warning(f"####Output: {solution_str}")
     acc_reward, format_reward, correction_reward, repeat_penalty = 0, 0, 0, 0
@@ -406,9 +405,9 @@ async def compute_score(
             correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * correction_reward + 0.8 * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
