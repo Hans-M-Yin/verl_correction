@@ -41,10 +41,12 @@ class SingleTurnAgentLoop(AgentLoopBase):
         messages = list(kwargs["raw_prompt"])
 
         # 1. extract images and videos from messages
-        multi_modal_data = await self.process_vision_info(messages)
+
+        # multi_modal_data = await self.process_vision_info(messages)
+        multi_modal_data = self.process_vision_info_without_transform(messages)
+
         images = multi_modal_data.get("images")
         videos = multi_modal_data.get("videos")
-
         # 01-22 add step for apply_chat_template, where adding trigger needs step value.
         step = kwargs.get("step", -1)
         # 2. apply chat template and tokenize

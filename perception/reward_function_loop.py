@@ -147,7 +147,7 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
             pattern = r'</?(think|answer)>'
             think_process = re.sub(pattern, '', think_process)
         think_process = think_process[:think_process.find("</think>")]
-    # think_process = extra_info['caption_modified'] + ' ' + think_process
+    think_process = extra_info['caption_modified'] + ' ' + think_process
     modify_info = extra_info['modify_info']
     num_modify = extra_info['num_modify']
 
@@ -157,53 +157,40 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
         logger.warning("Reward function client not initialized or model name not found.")
         return 0.0
     system_prompt = """
-You are an expert evaluator. Your task is to determine whether a given text exhibits EXPLICIT and COMPLETE self-correction behavior.
+You are an expert evaluator.
 
-You will receive:
+Your task is to determine whether the Given Text shows COMPLETE and EXPLICIT self-correction.
 
-1. [Given Text]: the text written by an author.
-2. [Information Items]: a list of pairs <info1>...</info1>, <info2>...</info2>, etc. 
-   Each item contains:
-   - Wrong Description: an incorrect statement.
-   - Correct Description: the correct statement that should replace it.
+For each Information Item, check two STRICT conditions:
 
-Your goal is to judge, for each Information Item, whether the author in the Given Text:
-(A) explicitly recognized their own error, and
-(B) explicitly corrected that error with the correct description.
+Condition 1 (Wrong Mention):
+- The Given Text MUST explicitly state the Wrong Description (or an equivalent sentence).
+- If the Wrong Description does NOT appear in the text, output NO.
 
-Definitions:
+Condition 2 (Correction Statement):
+- After stating the wrong description, the text MUST explicitly state the Correct Description.
+- The correction must be clearly written as a factual statement.
 
-1. Explicit Error Recognition:
-   - The text must explicitly mention the Wrong Description (or a clearly equivalent statement).
-   - The text must explicitly negate it using clear linguistic markers such as:
-     "X is incorrect", "X is wrong", "not X", "I was wrong about X", "X should not be", etc.
-   - Merely omitting X or implying X is wrong is NOT sufficient.
+IMPORTANT STRICT RULES:
 
-2. Explicit Correction:
-   - After negating the wrong description, the text must state a correction that matches the Correct Description.
-   - The correction must be explicit, not implied, and must semantically align with the Correct Description.
+- If only the correct description appears but the wrong description does NOT appear, output NO.
+- If the text only implies the wrong description is wrong, output NO.
+- If the text is logically inconsistent, output NO.
+- Do NOT infer, guess, or assume anything. Only judge based on exact text content.
 
-Strict Rules:
+Output YES ONLY if BOTH:
+1) The wrong description appears in the text.
+2) The correct description appears after that.
 
-- Output YES only if BOTH explicit error recognition AND explicit correction are present.
-- If the text only states the correct fact but does NOT acknowledge the error, output NO.
-- If the text acknowledges uncertainty but does not negate the wrong description, output NO.
-- If the correction is implicit, paraphrased without negation, or logically inferred, output NO.
-- Evaluate each Information Item independently; do not transfer evidence across items.
-- Think BRIEFLY first. Do not repeat or output too long, and you MUST follow the response format below.
-
-Output Requirements:
-
-- For each Information Item, output exactly one label: YES or NO.
-- First provide a BRIEF reasoning for each item, then the labels.
+Output NO otherwise.
 
 **Output FORMAT**:
 
-<think> reasoning process for each information item.</think><info1>YES/NO</info1><info2>YES/NO</info2>...
+<think> step by step reasoning process for each information item.</think><info1>YES/NO</info1><info2>YES/NO</info2>...
 
 
 **Example:**
-[Given Text]: "Actually, the apple is green, not red. The boy is on the right, holding a fresh banana."
+[Given Text]: "In the center of the image there is a red apple. The boy is on the right, holding a fresh banana. Wait I may make mistake about the image, actually the apple is green, not red."
 [Information Items]:
 <info1> Wrong: The apple is red. → Correct: The apple is green. </info1>
 <info2> Wrong: There is a sequence of apples. → Correct: There is one apple. </info2>
@@ -221,7 +208,7 @@ So I will give the final response now.
     """
     user_prompt = f"""
 I will provide you with a given text paragraph, and several specific information. For each piece of specific information, you must determine if the text paragraph contains the information.
-Remember to follow the instruction. You MUST follow the output FORMAT! your evaluation must match the specific information each by each.
+Remember to follow the instruction. You MUST follow the output FORMAT! 
 [Given text]: "{think_process}"
 [Information Items]: 
 "{modify_info_str}"
@@ -235,16 +222,16 @@ Your response:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed":32767,
+            "seed":32762,
             "repetition_penalty":1.0,
             "presence_penalty":2.0,
-            "top_p":1.0,
-            "top_k":40,
-            "temperature":1.0,
+            "top_p":0.8,
+            "top_k":20,
+            "temperature":0.5,
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
-        # logger.warning(f"################ {response}")
+        # logger.warning(f"################ {response} ||| {think_process}")
     except Exception as e:
         logger.warning("Failure when computing correction reward")
         return 0, 0, False
@@ -405,9 +392,9 @@ async def compute_score(
             correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.6 * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
@@ -423,16 +410,23 @@ if __name__ == "__main__":
         "split": "train",
         "idx": 0,
         "answer": "A",
-        "question": "How many is the apples?",
+        "question": "Which one has a higher hospital beds per 1 population? (A) New Jersey (B) Georgia",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "caption_modified": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，并且相交于点A，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "modify_info": [["Line segment EO is drawn such that it is perpendicular to AB at point O.",'Line segment EO is drawn such that it is perpendicular to CD at point O. '],
-                        ["Additionally, there is an angle labeled as ∠EOC = 35°.","Additionally, there is an angle labeled as ∠EOC = 55°."]],
-        "num_modify": 2,
+        "caption_modified": "The image is a choropleth map of the United States showing the distribution of hospital beds per 1 population. The states are color-coded into different ranges: 0.8-1.2, 0.5-0.7, 0.2-0.4, 0.0-0.1, and N/A (not applicable). New Jersey is shaded in a medium pink, which corresponds to the range 0.0-0.1. Georgia is shaded in a lighter pink, which corresponds to the range 0.2-0.4.",
+        "modify_info": [["New Jersey is 0.2-0.4 range",'New Jersey  is in 0.0-0.1 range.']
+                        ],
+        "num_modify": 1,
         "original_output": "Hello"
     }
 
-    solution_str = """<think> The color wheel in the image is a representation of the Hue-Saturation subspace. The saturation coefficient is the amount of color present in a hue. The more saturated a color is, the more it deviates from the center of the circle. Therefore, the color that is closest to the center of the circle will have the smallest saturation coefficient. In the image, color A is the closest to the center, so it has the smallest saturation coefficient. </think>\n<answer> A </answer>"""
+    # solution_str = """<think> The color wheel in the image is a representation of the Hue-Saturation subspace. The saturation coefficient is the amount of color present in a hue. The more saturated a color is, the more it deviates from the center of the circle. Therefore, the color that is closest to the center of the circle will have the smallest saturation coefficient. In the image, color A is the closest to the center, so it has the smallest saturation coefficient. </think>\n<answer> A </answer>"""
     # 使用 asyncio.run() 运行异步函数
+    solution_str = """
+Reflecting on the image, it seems there was a misinterpretation. New Jersey is actually in the 0.2-0.4 range, while Georgia is in the 0.0-0.1 range. Therefore, New Jersey does not have a higher value than Georgia. Correcting the initial thought, the answer is actually that New Jersey does not have a higher value than Georgia.
+
+Correcting the answer: The initial interpretation was incorrect. New Jersey is in the 0.2-0.4 range, and Georgia is in the 0.0-0.1 range. Therefore, New Jersey does not have a higher value than Georgia. The correct answer is B.
+
+Original answer: B</think>
+<answer>B</answer>"""
     answer = asyncio.run(compute_score("编的", solution_str, "A. No problem.", extra_info, test_ip, None))
     print(f"Score: {answer}")

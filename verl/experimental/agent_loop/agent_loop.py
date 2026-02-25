@@ -242,6 +242,108 @@ class AgentLoopBase(ABC):
 
         return multi_modal_data
 
+
+    async def process_vision_info_without_transform(self, messages: list[dict]) -> dict:
+        """Extract images and videos from messages.
+
+        Args:
+            messages (list[dict]): Input messages.
+
+        Returns:
+            dict: Multi-modal data with keys "images" and "videos".
+        """
+
+        async def extract_vision_info(conversations):
+            vision_infos = []
+            if isinstance(conversations[0], dict):
+                conversations = [conversations]
+            for conversation in conversations:
+                for message in conversation:
+                    if isinstance(message["content"], list):
+                        for ele in message["content"]:
+                            if (
+                                    "image" in ele.keys()
+                            ):
+                                vision_infos.append(ele['image'])
+            return vision_infos, None
+
+        multi_modal_data = {}
+        if self.processor is not None:
+            images, videos = await extract_vision_info(messages)
+            if images is not None:
+                multi_modal_data["images"] = images
+            if videos is not None:
+                multi_modal_data["videos"] = videos
+
+        return multi_modal_data
+
+
+    def fast_mm_tokenize_from_images(
+            self,
+            texts,
+            images,
+            tokenizer,
+            patch_size=14,
+            merge_size=2,
+            temporal_patch_size=1,
+            image_token="<|image_pad|>",
+            return_tensors="pt",
+    ):
+        """
+        Geometry-only multimodal tokenizer for Qwen2.5-VL.
+        Computes grid_thw internally from image shape.
+        """
+
+        # Normalize batch
+        if not isinstance(texts, list):
+            texts = [texts]
+        texts = texts.copy()
+
+        # === Extract H,W from images ===
+        image_sizes_hw = []
+        for img in images:
+            if isinstance(img, Image.Image):
+                W, H = img.size
+            elif isinstance(img, np.ndarray):
+                H, W = img.shape[:2]
+            elif torch.is_tensor(img):
+                if img.ndim == 3:
+                    C, H, W = img.shape
+                else:
+                    H, W = img.shape[-2:]
+            else:
+                raise TypeError(type(img))
+            image_sizes_hw.append((H, W))
+
+        # === Expand image tokens ===
+        img_index = 0
+        for i in range(len(texts)):
+
+            placeholder = "<|placeholder|>"
+            while image_token in texts[i]:
+                assert img_index < len(image_sizes_hw), f"黑马: {img_index} {len(image_sizes_hw)} {texts[i].replace('\n',' ')}"
+                H, W = image_sizes_hw[img_index]
+
+                grid_t = 1 // temporal_patch_size
+                grid_h = H // patch_size
+                grid_w = W // patch_size
+
+                num_image_tokens = (grid_t * grid_h * grid_w) // (merge_size ** 2)
+
+                texts[i] = texts[i].replace(image_token, placeholder * num_image_tokens, 1)
+
+                img_index += 1
+            texts[i] = texts[i].replace(placeholder, image_token)
+        # === Tokenize ===
+        tokenized = tokenizer(
+            texts,
+            return_tensors=return_tensors,
+            padding=True,
+            truncation=True,
+        )
+
+        return tokenized["input_ids"]
+
     async def apply_chat_template(
         self,
         messages: list[dict],
@@ -251,6 +353,7 @@ class AgentLoopBase(ABC):
         step: int = -1,
         remove_system_prompt: bool = False,
     ):
+        import time
         """Apply chat template to messages with optional tools, images, and videos.
 
         Args:
@@ -290,7 +393,6 @@ class AgentLoopBase(ABC):
                     **self.apply_chat_template_kwargs,
                 ),
             )
-            # print(type(self.processor))
             if messages[-1]['role'] == 'assistant':
                 # We need to delete the end of this sentence.
                 # **Notice** that currently we just implement the code for Qwen2.5-VL, other models' modification will be implemented soon.
@@ -305,17 +407,23 @@ class AgentLoopBase(ABC):
                 videos, video_metadatas = list(videos), list(video_metadatas)
             else:
                 video_metadatas = None
-            model_inputs = self.processor(
-                text=[raw_prompt],
-                images=images,
-                videos=videos,
-                video_metadatas=video_metadatas,
-                return_tensors="pt",
-                do_sample_frames=False,
-            )
-            prompt_ids = model_inputs.pop("input_ids").squeeze(0).tolist()
-            # logger.warning(f"## After Processing: {prompt_ids}")
 
+            # model_inputs = self.processor(
+            #     text=[raw_prompt],
+            #     images=images,
+            #     videos=videos,
+            #     video_metadatas=video_metadatas,
+            #     return_tensors="pt",
+            #     do_sample_frames=False,
+            # )
+            # _prompt_ids = model_inputs.pop("input_ids")
+            _input_ids = self.fast_mm_tokenize_from_images(
+                texts=[raw_prompt],
+                images=images,
+                tokenizer=self.processor.tokenizer,
+            )
+            prompt_ids = _input_ids.squeeze(0).tolist()
+            # print(torch.equal(_input_ids, model_inputs.pop("input_ids")), " | ")
         else:
             prompt_ids = await self.loop.run_in_executor(
                 None,
