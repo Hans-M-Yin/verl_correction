@@ -1,6 +1,5 @@
 set -x
 ENGINE=${1:-vllm}
-RESUME_PATH="checkpoints/verl_correction/0223_qwen2_5_vl_7b_mix_10K/global_step_140"
 
 # Run on 901b2136
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
@@ -19,7 +18,7 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=24 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.008 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -52,7 +51,7 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger='["console","wandb"]' \
     trainer.project_name='verl_correction' \
-    trainer.experiment_name='0223_qwen2_5_vl_7b_mix_10K' \
+    trainer.experiment_name='0223_qwen2_5_vl_7b_mix_10K_STANDARD' \
     trainer.val_before_train=False \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
@@ -66,10 +65,8 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     +trainer.trigger_mode='part' \
     +trainer.trigger_enable_schedule=True \
     +trainer.trigger_file_path=./perception/utils/triggers.json \
-    trainer.resume_mode="resume_path" \
-    trainer.resume_from_path="$RESUME_PATH" \
-    trainer.validation_data_dir=./rollouts_saved/test_0223_mix_data_7b_REDESIGN_REWARD/val/ \
-    trainer.rollout_data_dir=./rollouts_saved/test_0223_mix_data_7b_REDESIGN_REWARD/train/ \
+    trainer.validation_data_dir=./rollouts_saved/test_0225_mix_data_7b_STANDARD/val/ \
+    trainer.rollout_data_dir=./rollouts_saved/test_0225_mix_data_7b_STANDARD/train/ \
     custom_reward_function.path=perception/reward_function_loop.py \
     custom_reward_function.name=compute_score $@
 

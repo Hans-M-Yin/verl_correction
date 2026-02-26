@@ -7,6 +7,7 @@ from openai.types.chat import ChatCompletion
 from transformers import PreTrainedTokenizer
 import re
 import logging
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 test_ip = "localhost:18903"
@@ -46,14 +47,14 @@ async def re_hard_match(answer: str):
 async def chat_complete(router_address: str, chat_complete_request: dict):
     url = f"http://{router_address}/v1/chat/completions"
     try:
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(total=90)
         session = aiohttp.ClientSession(timeout=timeout)
         async with session.post(url, json=chat_complete_request) as resp:
             output = await resp.text()
             output = json.loads(output)
             return ChatCompletion(**output)
     except Exception as e:
-        logger.warning(f"Chat Failed!")
+        logger.warning(f"Chat Failed! {e}")
         raise e
     finally:
         await session.close()
@@ -157,6 +158,7 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
         logger.warning("Reward function client not initialized or model name not found.")
         return 0.0
     system_prompt = """
+Reasoning: low
 You are an expert evaluator.
 
 Your task is to determine whether the Given Text shows COMPLETE and EXPLICIT self-correction.
@@ -222,18 +224,13 @@ Your response:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed":32762,
-            "repetition_penalty":1.0,
-            "presence_penalty":2.0,
-            "top_p":0.8,
-            "top_k":20,
-            "temperature":0.5,
+            "seed": 32767
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
-        # logger.warning(f"################ {response} ||| {think_process}")
+        logger.warning(f"################ {response}")
     except Exception as e:
-        logger.warning("Failure when computing correction reward")
+        logger.warning(f"Failure when computing correction reward: {e}")
         return 0, 0, False
     response_temp = response
     if "<info1>" in response:
@@ -378,7 +375,9 @@ async def compute_score(
                 f"Extracted answer: '{answer_text}'\n"
                 f"Format error: {is_format_error}\n"
             )
-        correction_reward = acc_reward
+        # correction_reward = acc_reward
+    # NOTICE!!!!!
+        correction_reward = 0
         if extra_info['type'] == 1:
             correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
             if state:
@@ -412,7 +411,7 @@ if __name__ == "__main__":
         "answer": "A",
         "question": "Which one has a higher hospital beds per 1 population? (A) New Jersey (B) Georgia",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "caption_modified": "The image is a choropleth map of the United States showing the distribution of hospital beds per 1 population. The states are color-coded into different ranges: 0.8-1.2, 0.5-0.7, 0.2-0.4, 0.0-0.1, and N/A (not applicable). New Jersey is shaded in a medium pink, which corresponds to the range 0.0-0.1. Georgia is shaded in a lighter pink, which corresponds to the range 0.2-0.4.",
+        "caption_modified": "The image is a choropleth map of the United States showing the distribution of hospital beds per 1 population. The states are color-coded into different ranges: 0.8-1.2, 0.5-0.7, 0.2-0.4, 0.0-0.1, and N/A (not applicable). New Jersey is shaded in a medium pink, which corresponds to the range 0.2-0.4. Georgia is shaded in a lighter pink, which corresponds to the range 0.1-0.2.",
         "modify_info": [["New Jersey is 0.2-0.4 range",'New Jersey  is in 0.0-0.1 range.']
                         ],
         "num_modify": 1,
@@ -428,5 +427,5 @@ Correcting the answer: The initial interpretation was incorrect. New Jersey is i
 
 Original answer: B</think>
 <answer>B</answer>"""
-    answer = asyncio.run(compute_score("编的", solution_str, "A. No problem.", extra_info, test_ip, None))
+    answer = asyncio.run(compute_score("编的", solution_str, "E. (b).", extra_info, test_ip, None))
     print(f"Score: {answer}")

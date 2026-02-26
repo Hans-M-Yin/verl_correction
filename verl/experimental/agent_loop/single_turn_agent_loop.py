@@ -43,7 +43,7 @@ class SingleTurnAgentLoop(AgentLoopBase):
         # 1. extract images and videos from messages
 
         # multi_modal_data = await self.process_vision_info(messages)
-        multi_modal_data = self.process_vision_info_without_transform(messages)
+        multi_modal_data = await self.process_vision_info_without_transform(messages)
 
         images = multi_modal_data.get("images")
         videos = multi_modal_data.get("videos")
