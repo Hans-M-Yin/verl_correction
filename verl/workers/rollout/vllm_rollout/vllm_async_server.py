@@ -335,6 +335,7 @@ class vLLMHttpServer:
                 args["served_model_name"] = served_model_name
         else:
             args['served_model_name'] = "qwen3-vl-8b"
+        logger.warning(f"################################################################### {args['served_model_name']}")
         if self.config.expert_parallel_size > 1:
             assert self.gpus_per_node % self.config.tensor_model_parallel_size == 0, (
                 "gpus_per_node should be divisible by tensor_model_parallel_size"

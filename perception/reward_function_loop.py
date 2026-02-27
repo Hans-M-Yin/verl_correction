@@ -224,13 +224,12 @@ Your response:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "seed": 32767
         }
         response = await chat_complete(router_address=reward_router_address, chat_complete_request=chat_complete_request)
         response = response.choices[0].message.content
-        logger.warning(f"################ {response}")
+        # logger.warning(f"################ {response}")
     except Exception as e:
-        logger.warning(f"Failure when computing correction reward: {e}")
+        logger.warning("Failure when computing correction reward")
         return 0, 0, False
     response_temp = response
     if "<info1>" in response:
@@ -279,7 +278,7 @@ Your response:
         return 0,0, False
     return correction_count, failure_count, True
 
-def ngram_repetition_ratio(tokens, n, eps=0.7):
+def ngram_repetition_ratio(tokens, n, eps=0.85):
     ngrams = [
         tuple(tokens[i:i+n])
         for i in range(len(tokens) - n + 1)
@@ -391,9 +390,9 @@ async def compute_score(
             correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.3 * acc_reward * correction_reward + 0.8 * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + 0.4 * format_reward + 0.3 * acc_reward * correction_reward + 0.8 * repeat_penalty
         if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 
@@ -411,7 +410,7 @@ if __name__ == "__main__":
         "answer": "A",
         "question": "Which one has a higher hospital beds per 1 population? (A) New Jersey (B) Georgia",
         "caption_correct": "图片展示三角形ABC，其中OB和OC分别为∠ABC和∠ACB的内角平分线，相交于点O，连接OA。图中清晰标记了点A、B、C、O的位置及连线结构。",
-        "caption_modified": "The image is a choropleth map of the United States showing the distribution of hospital beds per 1 population. The states are color-coded into different ranges: 0.8-1.2, 0.5-0.7, 0.2-0.4, 0.0-0.1, and N/A (not applicable). New Jersey is shaded in a medium pink, which corresponds to the range 0.2-0.4. Georgia is shaded in a lighter pink, which corresponds to the range 0.1-0.2.",
+        "caption_modified": "The image is a choropleth map of the United States showing the distribution of hospital beds per 1 population. The states are color-coded into different ranges: 0.8-1.2, 0.5-0.7, 0.2-0.4, 0.0-0.1, and N/A (not applicable). New Jersey is shaded in a medium pink, which corresponds to the range 0.0-0.1. Georgia is shaded in a lighter pink, which corresponds to the range 0.2-0.4.",
         "modify_info": [["New Jersey is 0.2-0.4 range",'New Jersey  is in 0.0-0.1 range.']
                         ],
         "num_modify": 1,
