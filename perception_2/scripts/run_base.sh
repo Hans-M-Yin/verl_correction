@@ -7,7 +7,7 @@ export $(grep -v '^#' ../configs/reward_function_hyperparam.env | xargs)
 
 DATE=$(date +%m%d)
 EXP_NAME="${DATE}_base_run"
-ROLLOUT_SAVE_PATH = "./rollouts_saved/${EXP_NAME}"
+ROLLOUT_SAVE_PATH="./rollouts_saved/${EXP_NAME}"
 
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \

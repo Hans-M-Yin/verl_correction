@@ -7,7 +7,7 @@ MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct
 RM_MODEL_PATH=Qwen/Qwen3-VL-32B-Instruct
 
 ########################
-# * Data
+# Data
 ########################
 TRAIN_FILE=_preprocessed_dataset/dataset_mixed_22k_qwen3-vl-8b_20260218_205144_filtered_PROCESSED_NEW_SYSTEM_PROMPT/train.parquet
 VAL_FILE=_preprocessed_dataset/dataset_mixed_22k_qwen3-vl-8b_20260218_205144_filtered_PROCESSED_NEW_SYSTEM_PROMPT/test.parquet
@@ -23,7 +23,7 @@ MAX_RESPONSE_LENGTH=1500
 # PPO / GRPO
 ########################
 LR=1e-6
-ROLLOUT_N=8 #可能调大
+ROLLOUT_N=8
 
 PPO_MINI_BATCH_SIZE=64 #可能调大
 PPO_MICRO_BATCH_SIZE=16 #可能调大
@@ -42,7 +42,7 @@ TENSOR_PARALLEL_SIZE=2 # 可能调小
 ########################
 EPOCHS=5
 SAVE_FREQ=70
-TEST_FREQ=5 #可能调小
+TEST_FREQ=3
 
 ########################
 # Trigger schedule

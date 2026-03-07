@@ -10,9 +10,9 @@ DATE=$(date +%m%d)
 export CORRECTION_COEF=0
 
 EXP_NAME="${DATE}_correction_coef_0_n10"
-ROLLOUT_SAVE_PATH = "./rollouts_saved/${EXP_NAME}"
+ROLLOUT_SAVE_PATH="./rollouts_saved/${EXP_NAME}"
 
-ROLLOUT_N = 10
+ROLLOUT_N=10
 
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \

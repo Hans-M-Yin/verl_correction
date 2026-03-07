@@ -10,7 +10,7 @@ DATE=$(date +%m%d)
 export CORRECTION_COEF=0.3
 
 EXP_NAME="${DATE}_correction_coef_0.3"
-ROLLOUT_SAVE_PATH = "./rollouts_saved/${EXP_NAME}"
+ROLLOUT_SAVE_PATH="./rollouts_saved/${EXP_NAME}"
 
 
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \

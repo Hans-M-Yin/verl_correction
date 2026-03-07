@@ -10,9 +10,9 @@ import logging
 from openai import OpenAI
 import os
 
-FORMAT_COEF = float(os.getenv("FORMAT_COEF"))
-CORRECTION_COEF = float(os.getenv("CORRECTION_COEF"))
-REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY"))
+FORMAT_COEF = float(os.getenv("FORMAT_COEF", 0.4))
+CORRECTION_COEF = float(os.getenv("CORRECTION_COEF",0.2))
+REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY",0.8))
 
 
 logger = logging.getLogger(__name__)
