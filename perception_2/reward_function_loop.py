@@ -8,6 +8,12 @@ from transformers import PreTrainedTokenizer
 import re
 import logging
 from openai import OpenAI
+import os
+
+FORMAT_COEF = float(os.getenv("FORMAT_COEF"))
+CORRECTION_COEF = float(os.getenv("CORRECTION_COEF"))
+REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY"))
+
 
 logger = logging.getLogger(__name__)
 test_ip = "localhost:18903"
@@ -158,7 +164,6 @@ async def compute_correction_reward(data_source, solution_str, ground_truth, ext
         logger.warning("Reward function client not initialized or model name not found.")
         return 0.0
     system_prompt = """
-Reasoning: low
 You are an expert evaluator.
 
 Your task is to determine whether the Given Text shows COMPLETE and EXPLICIT self-correction.
@@ -376,23 +381,23 @@ async def compute_score(
             )
         # correction_reward = acc_reward
     # NOTICE!!!!!
-        correction_reward = 0.0
-        # if extra_info['type'] == 1:
-        #     correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
-        #     if state:
-        #         correction_reward = correction_count / extra_info['num_modify']
-        #         if correction_reward > 1.0:
-        #             logger.warning(f"Bigger correction reward than excepted:{correction_reward}")
-        #             correction_reward = 1.0
-        #     else:
-        #         logger.warning("Encounter failure when calculating correction reward ")
-        # else:
-        #     correction_reward = 0.0
+        correction_reward = 0
+        if extra_info['type'] == 1:
+            correction_count, failure_count, state, = await compute_correction_reward(data_source, solution_str, ground_truth, extra_info, reward_router_address, reward_model_tokenizer)
+            if state:
+                correction_reward = correction_count / extra_info['num_modify']
+                if correction_reward > 1.0:
+                    logger.warning(f"Bigger correction reward than excepted:{correction_reward}")
+                    correction_reward = 1.0
+            else:
+                logger.warning("Encounter failure when calculating correction reward ")
+        else:
+            correction_reward = 0.0
         repeat_penalty = ngram_repetition_ratio(predict_no_think, 4)
         if repeat_penalty < -0.1:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + FORMAT_COEF * format_reward + CORRECTION_COEF * acc_reward * correction_reward + REPETITION_PENALTY * repeat_penalty
         else:
-            final_score = 1 * acc_reward + 0.4 * format_reward + 0.2 * acc_reward * correction_reward + 0.8 * repeat_penalty
+            final_score = 1 * acc_reward + FORMAT_COEF * format_reward + CORRECTION_COEF * acc_reward * correction_reward + REPETITION_PENALTY * repeat_penalty
         if final_score < -0.5:
             logger.warning(f"Reward less: {final_score} | {acc_reward} | {format_reward} | repeat_penalty: {repeat_penalty} | {solution_str.replace('\n', ' ')}")
 

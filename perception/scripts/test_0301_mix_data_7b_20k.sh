@@ -1,11 +1,9 @@
 set -x
 ENGINE=${1:-vllm}
-RESUME_PATH="checkpoints/verl_correction/0226_qwen2_5_vl_7b_mix_10K_NEW_PROMPT/global_step_249"
-
 # 两处改动：使用GPT-OSS 20B，改为常规system prompt。
 VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=/root/autodl-tmp/perception/data/preprocessed_dataset/dataset_mixed_22k_qwen3-vl-8b_20260218_205144_filtered_PROCESSED_NEW_SYSTEM_PROMPT/train.parquet \
+    data.train_files=/root/autodl-tmp/perception/data/preprocessed_dataset/dataset_mixerz4fXdvvfJAVd_30k_qwen3-vl-8b_20260303_034948/train.parquet \
     data.val_files=/root/autodl-tmp/perception/data/preprocessed_dataset/dataset_mixed_22k_qwen3-vl-8b_20260218_205144_filtered_PROCESSED_NEW_SYSTEM_PROMPT/test.parquet \
     data.train_batch_size=128 \
     data.max_prompt_length=5500 \
@@ -52,13 +50,13 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger='["console","wandb"]' \
     trainer.project_name='verl_correction' \
-    trainer.experiment_name='0226_qwen2_5_vl_7b_mix_10K_NEW_PROMPT' \
+    trainer.experiment_name='0301_qwen2_5_vl_7b_mix_30K_NEW_PROMPT' \
     trainer.val_before_train=False \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=70 \
-    trainer.test_freq=3 \
-    trainer.total_epochs=5 \
+    trainer.test_freq=4 \
+    trainer.total_epochs=3 \
     +trainer.enable_trigger=True \
     +trainer.trigger_warmup_ratio=0.3 \
     +trainer.trigger_start_ratio=0.8 \
@@ -66,10 +64,8 @@ VLLM_USE_V1=1 python3 -m verl.trainer.main_ppo \
     +trainer.trigger_mode='part' \
     +trainer.trigger_enable_schedule=True \
     +trainer.trigger_file_path=./perception/utils/triggers.json \
-    trainer.validation_data_dir=./rollouts_saved/test_0226_mix_data_7b_STANDARD/val/ \
-    trainer.rollout_data_dir=./rollouts_saved/test_0226_mix_data_7b_STANDARD/train/ \
-    trainer.resume_mode="resume_path" \
-    trainer.resume_from_path="$RESUME_PATH" \
+    trainer.validation_data_dir=./rollouts_saved/test_0301_mix_data_7b_30k/val/ \
+    trainer.rollout_data_dir=./rollouts_saved/test_0301_mix_data_7b_30k/train/ \
     custom_reward_function.path=perception/reward_function_loop.py \
     custom_reward_function.name=compute_score $@
 

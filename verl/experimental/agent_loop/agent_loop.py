@@ -676,6 +676,8 @@ class AgentLoopWorker:
         # logger.warning("@@@@@@@@@@@@ 5.我嫩爹")
 
         # TODO(wuxibin): remove padding and use tensordict.
+        # import time
+        # t1 = time.time()
         self.tokenizer.padding_side = "left"
         prompt_output = self.tokenizer.pad(
             {"input_ids": output.prompt_ids},
@@ -737,10 +739,13 @@ class AgentLoopWorker:
                 )
 
             routed_experts[:, start_pos:end_pos] = experts_tensor.unsqueeze(0)
+        # t2 = time.time()
 
         multi_modal_inputs = self._compute_multi_modal_inputs(output, input_ids)
+        # t3 = time.time()
+
         position_ids = self._compute_position_ids(input_ids, attention_mask, multi_modal_inputs)
-        # logger.warning("@@@@@@@@@@@@ 6.爹嫩我")
+        # t4 = time.time()
 
         await self._compute_score(
             output,
@@ -751,8 +756,8 @@ class AgentLoopWorker:
             position_ids=position_ids,
             kwargs=kwargs,
         )
-        # logger.warning("@@@@@@@@@@@@ 7.老子还不信了")
-
+        # t5 = time.time()
+        # logger.warning(f"############## {t2 - t1} | {t3 - t2} | {t4 - t3} | {t5 - t4}")
 
         return _InternalAgentLoopOutput(
             prompt_ids=prompt_output["input_ids"],
@@ -793,6 +798,8 @@ class AgentLoopWorker:
             video_metadatas=video_metadatas,
             return_tensors="pt",
             do_sample_frames=False,
+            images_kwargs={"do_resize": False},
+
         )
         multi_modal_inputs.pop("input_ids", None)
         multi_modal_inputs.pop("attention_mask", None)
