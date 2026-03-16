@@ -17,7 +17,7 @@ VAL_FILE_30K=_preprocessed_dataset/dataset_mixed_22k_qwen3-vl-8b_20260218_205144
 
 TRAIN_BATCH_SIZE=128 # 可能调大
 MAX_PROMPT_LENGTH=5500
-MAX_RESPONSE_LENGTH=1500
+MAX_RESPONSE_LENGTH=15·00
 
 ########################
 # PPO / GRPO
@@ -27,7 +27,7 @@ ROLLOUT_N=8
 
 PPO_MINI_BATCH_SIZE=64 #可能调大
 PPO_MICRO_BATCH_SIZE=16 #可能调大
-
+LOG_PROB_MICRO_BATCH_SIZE_PER_GPU=30
 KL_COEF=0.008 #调大或者调小
 
 ########################
@@ -43,7 +43,7 @@ TENSOR_PARALLEL_SIZE=2 # 可能调小
 EPOCHS=5
 SAVE_FREQ=70
 TEST_FREQ=3
-
+N_GPUS=8
 ########################
 # Trigger schedule
 ########################
