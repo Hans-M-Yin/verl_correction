@@ -18,15 +18,6 @@ SYSTEM_PROMPT = (
     "The reasoning process MUST BE enclosed within <think> </think> tags, and the answer process MUST BE enclosed within <answer> </answer> tags. "
 )
 
-ds_collections = {
-    'MathVerse_testmini': {
-        'root': 'AI4Math/MathVerse',
-        'max_new_tokens': 4096,
-        'min_new_tokens': 1,
-        'split': 'testmini'
-    },
-}
-
 
 def encode_image_to_base64(img: bytes):
     img_str = base64.b64encode(img).decode('utf-8')
@@ -34,9 +25,9 @@ def encode_image_to_base64(img: bytes):
 
 
 def evaluate(args):
-    dataset = load_dataset("AI4Math/MathVerse", "testmini")['testmini']
-    print(dataset)
+    dataset = load_dataset("We-Math/We-Math", split='testmini')
     dataset = dataset.cast_column("image", Image(decode=True))
+
     inputs = []
     processor = Qwen2_5_VLProcessor.from_pretrained(args.checkpoint, trust_remote_code=True)
 
@@ -50,7 +41,6 @@ def evaluate(args):
         max_num_seqs=512,
         max_model_len=20000,
     )
-
     sampling_params = SamplingParams(
         temperature=0.0,
         top_k=1,
@@ -60,17 +50,18 @@ def evaluate(args):
     )
 
     for idx, data_item in tqdm.tqdm(enumerate(dataset)):
+        query = data_item['question'] + "\nChoices:\n" + data_item['option']
         messages = [
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "image",
-                        "image": data_item['image'],
+                        "image": data_item['image_path'],
                     },
                     {
                         "type": "text",
-                        "text": data_item['question'] + ' ' + SYSTEM_PROMPT,
+                        "text": query + ' ' + SYSTEM_PROMPT,
                     },
                 ],
             }
@@ -91,7 +82,7 @@ def evaluate(args):
 
     outputs = []
     for dataitem, output in zip(dataset, model_outputs):
-        del dataitem['image']
+        del dataitem['image_path']
 
         outputs.append({
             **dataitem,
@@ -105,10 +96,10 @@ def evaluate(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, default='checkpoints/Qwen2.5-VL-7B-Instruct')
-    parser.add_argument('--datasets', type=str, default='MathVerse')
+    parser.add_argument('--datasets', type=str, default='We-Math')
     parser.add_argument('--tensor-parallel-size', type=int, default=1)
     parser.add_argument('--out-dir', type=str, default='tests')
-    parser.add_argument('--filename', type=str, default='mathverse_test.json')
+    parser.add_argument('--filename', type=str, default='wemath_test.json')
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
 
