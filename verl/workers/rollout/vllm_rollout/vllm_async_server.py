@@ -576,9 +576,11 @@ class vLLMHttpServer:
             if self.node_rank == 0:
                 await self.engine.wake_up(tags=["kv_cache", "weights"])
                 from openai import OpenAI
+                import httpx
                 client = OpenAI(
                     api_key="EMPTY",
-                    base_url=f"http://{self._server_address}:{self._server_port}/v1"
+                    base_url=f"http://{self._server_address}:{self._server_port}/v1",
+                    http_client=httpx.Client(proxies=None)
                 )
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip wake_up in standalone mode")
