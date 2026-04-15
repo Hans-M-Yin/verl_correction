@@ -7,7 +7,6 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from openai import OpenAI
 
-
 # Extraction Examples for We-Math
 def extraction_examples():
     example_1 = """
@@ -38,7 +37,6 @@ Extracted answer: <answer>C</answer>
 
     return [example_1, example_2, example_3, example_4]
 
-
 task_description = """
 Please read the following example.
 Then extract the answer from the model response and type it at the end of the prompt.\n
@@ -60,12 +58,10 @@ openend_template = (
     "**Ground Truth Answer**: {gt_answer}\n"
 )
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="We-Math API Judge ArgParser")
     parser.add_argument("--model_name", "--model-name", type=str, default="gpt-4o", help="Model name for API")
-    parser.add_argument("--api_key", type=str, default="sk-Eek0pnQdHdSPIvwfYMvDoCWoI0H6QoakugWZfCViQeWJlIsD",
-                        help="API key")
+    parser.add_argument("--api_key", type=str, default="sk-Eek0pnQdHdSPIvwfYMvDoCWoI0H6QoakugWZfCViQeWJlIsD", help="API key")
     parser.add_argument("--api_url", type=str, default="https://yunwu.ai/v1", help="API base URL")
     parser.add_argument("--eval_basedir", "--eval-basedir", type=str, default="",
                         help="Base directory to scan for json files")
@@ -73,7 +69,6 @@ def parse_args():
                         help="Directly specify a single json file to judge")
     parser.add_argument("--parallel_num", "--parallel-num", type=int, default=20, help="Number of parallel requests")
     return parser.parse_args()
-
 
 def call_api(client, model, messages, max_tokens=128, temperature=0.0):
     try:
@@ -87,7 +82,6 @@ def call_api(client, model, messages, max_tokens=128, temperature=0.0):
     except Exception as e:
         print(f"API call failed: {e}")
         return "ERROR"
-
 
 def construct_messages_for_extraction(all_data: list):
     extraction_data_indices = []
@@ -111,7 +105,6 @@ def construct_messages_for_extraction(all_data: list):
         extraction_data_indices.append(idx)
     return messages, extraction_data_indices
 
-
 def construct_messages_for_judge(dataitem: dict):
     extracted_answer = dataitem.get('extracted_answer', dataitem['response'])
     # Clean up the extracted answer (remove tags if present)
@@ -134,13 +127,12 @@ def construct_messages_for_judge(dataitem: dict):
             response=response,
             gt_answer=gt_answer,
         )
-
+    
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": user_query},
     ]
     return messages
-
 
 def read_wemath_eval_data(filepaths: list[str]):
     all_data = []
@@ -159,7 +151,6 @@ def read_wemath_eval_data(filepaths: list[str]):
         except Exception as e:
             print(f"Error reading {filepath}: {e}")
     return all_data
-
 
 def main(args):
     client = OpenAI(api_key=args.api_key, base_url=args.api_url)
@@ -235,7 +226,7 @@ def main(args):
         dirname = os.path.dirname(source_filepath)
         filename = os.path.basename(source_filepath)
         base_name = os.path.splitext(filename)[0]
-
+            
         output_filepath = os.path.join(dirname, f"{base_name}-qwen_judge_results_v4.json")
         results_to_files[output_filepath] = results_to_files.get(output_filepath, []) + [
             {
@@ -249,15 +240,14 @@ def main(args):
         print(f"Saving results to {filepath}")
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=4)
-
+            
         # Summary
         correct = sum(1 for r in results if r['judge_result'].lower() == 'true')
         total = len(results)
         print("-" * 30)
         print(f"Summary for {os.path.basename(filepath)}:")
-        print(f"Total: {total}, Correct: {correct}, Accuracy: {correct / total * 100:.2f}%")
+        print(f"Total: {total}, Correct: {correct}, Accuracy: {correct/total*100:.2f}%")
         print("-" * 30)
-
 
 if __name__ == "__main__":
     args = parse_args()

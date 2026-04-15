@@ -16,7 +16,6 @@ from functools import partial
 SYSTEM_PROMPT = (
     "You FIRST think about the reasoning process as an internal monologue and then provide the final answer. "
     "The reasoning process MUST BE enclosed within <think> </think> tags, and the answer process MUST BE enclosed within <answer> </answer> tags. "
-    "The final answer MUST BE put in \\boxed{} in <answer> </answer> tags."
 )
 
 ds_collections = {

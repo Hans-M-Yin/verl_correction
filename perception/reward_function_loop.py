@@ -54,7 +54,7 @@ async def chat_complete(router_address: str, chat_complete_request: dict):
             output = json.loads(output)
             return ChatCompletion(**output)
     except Exception as e:
-        logger.warning(f"Chat Failed! {e}")
+        logger.warning(f"Chat Failed!",  exc_info=e)
         raise e
     finally:
         await session.close()
@@ -120,7 +120,7 @@ async def llm_as_judge(data_source: str, answer_text: str, ground_truth: str, ex
         response = chat_response.choices[0].message.content.strip()
         # print(f"##### {response} {answer_text} {ground_truth}")
     except Exception as e:
-        logger.warning(f" [WARNING] Chat completion request failed: {e}")
+        logger.warning(f" [WARNING] Chat completion request failed", exc_info=e)
         return 0.0
     if re.search(r"\bCORRECT\b", response, re.IGNORECASE):
         acc_reward = 1.0
